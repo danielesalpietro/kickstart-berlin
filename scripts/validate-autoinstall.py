@@ -25,6 +25,7 @@ directory (Fase 2, issue #2):
 from __future__ import annotations
 
 import glob
+import json
 import os
 import re
 import sys
@@ -35,16 +36,44 @@ REQUIRED_KEYS = ("version", "locale", "identity", "ssh", "storage")
 SSH_KEY_PLACEHOLDER = "__SSH_AUTHORIZED_KEY__"
 STORAGE_CONFIG_PLACEHOLDER = "__STORAGE_CONFIG__"
 
-DUMMY_SUBSTITUTIONS = {
-    "__SSH_AUTHORIZED_KEY__": "ssh-ed25519 AAAAvalidatedummykeyAAAA validate@kickstart-berlin",
-    "__SYSTEM_PARTITION_SIZE__": "100G",
-    "__DATASTORE_FILESYSTEM__": "xfs",
-    "__DATASTORE_LABEL__": "grastorp-datastore",
-    "__DATASTORE_MOUNT_ROOT__": "/grastorp/volumes",
-    "__DATASTORE_SYMLINK_NAME__": "datastore",
-}
+# I valori di sostituzione per la validazione vengono letti da
+# config/autoinstall-defaults.json — la stessa fonte usata da
+# scripts/build-iso.sh a build-time — così il validatore verifica i
+# valori reali che finiranno nell'ISO, non copie hardcoded qui che
+# possono disallinearsi silenziosamente dal JSON (com'è successo con la
+# label XFS: 'grastorp-datastore', 18 caratteri, oltre il limite di 12).
+# L'unica eccezione è la chiave SSH, che non vive nel JSON (mai nel repo).
+def load_dummy_substitutions() -> dict[str, str]:
+    defaults_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "config", "autoinstall-defaults.json"
+    )
+    with open(defaults_path, encoding="utf-8") as f:
+        d = json.load(f)
+    storage = d["storage"]
+    datastore = storage["datastore"]
+    return {
+        "__SSH_AUTHORIZED_KEY__": "ssh-ed25519 AAAAvalidatedummykeyAAAA validate@kickstart-berlin",
+        "__SYSTEM_PARTITION_SIZE__": storage["system_partition_size"],
+        "__DATASTORE_FILESYSTEM__": datastore["filesystem"],
+        "__DATASTORE_LABEL__": datastore["label"],
+        "__DATASTORE_MOUNT_ROOT__": datastore["mount_root"],
+        "__DATASTORE_SYMLINK_NAME__": datastore["symlink_name"],
+    }
+
+
+DUMMY_SUBSTITUTIONS = load_dummy_substitutions()
 
 PLACEHOLDER_RE = re.compile(r"__[A-Z_]+__")
+
+# Limiti di lunghezza label per filesystem (mkfs fallisce oltre questi
+# valori). Solo i filesystem effettivamente usati nei frammenti storage.
+MAX_LABEL_LEN = {
+    "xfs": 12,
+    "ext4": 16,
+    "fat32": 11,
+    "vfat": 11,
+    "btrfs": 255,
+}
 
 
 def fail(msg: str) -> None:
@@ -148,6 +177,15 @@ def validate_storage_fragment(path: str) -> None:
                     "(l'ordine delle azioni conta)"
                 )
         defined_ids.add(action["id"])
+        if action.get("type") == "format" and "label" in action:
+            fstype, label = action["fstype"], action["label"]
+            max_len = MAX_LABEL_LEN.get(fstype)
+            if max_len is not None and len(label) > max_len:
+                fail(
+                    f"{path}: azione '{action['id']}' ha label {label!r} "
+                    f"({len(label)} caratteri), ma {fstype} accetta al massimo "
+                    f"{max_len} caratteri"
+                )
 
     fstypes = {a["fstype"] for a in actions if a.get("type") == "format"}
     if "ext4" not in fstypes:

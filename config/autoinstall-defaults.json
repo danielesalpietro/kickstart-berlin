@@ -13,8 +13,9 @@
     "disk_topology": "single",
     "system_partition_size": "100G",
     "datastore": {
+      "$comment": "label: XFS limita la label a 12 caratteri (mkfs.xfs -L fallisce oltre); 'datastore' (9) ci sta comodo. Un solo datastore per nodo in questa fase, nessun suffisso numerico necessario.",
       "filesystem": "xfs",
-      "label": "grastorp-datastore",
+      "label": "datastore",
       "mount_root": "/grastorp/volumes",
       "symlink_name": "datastore"
     }
