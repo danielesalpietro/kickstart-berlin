@@ -5,10 +5,20 @@ boot-test-hyperv.ps1 - equivalente Hyper-V di boot-test-qemu.sh.
 Crea una VM Gen2 throwaway, avvia l'ISO autoinstall, cattura la console
 seriale via named pipe (richiede console=ttyS0 nel kernel, gia' presente
 nell'ISO generata da build-iso.sh) e verifica il login SSH con la chiave
-iniettata a build-time. Ripulisce la VM e il VHD al termine.
+iniettata a build-time. Con -Disks 2 crea due VHD di dimensione diversa
+(sistema piu' piccolo, datastore piu' grande) per testare la topologia
+dual-disk della Fase 2 (issue #2) — a differenza di boot-test-qemu.sh
+--disks 2, che oggi crea dischi tutti della stessa taglia e quindi non
+verifica davvero l'euristica "disco piu' piccolo = sistema" di
+iso/storage-dual-disk.yaml. Ripulisce VM e VHD al termine.
 
-Uso:
+Uso (1 disco, invariato):
   scripts/boot-test-hyperv.ps1 -Iso build\kickstart-berlin-test.iso -SshKey $env:USERPROFILE\.ssh\ks_test_key
+
+Uso (2 dischi di dimensione diversa, Fase 2):
+  scripts/boot-test-hyperv.ps1 -Iso build\kickstart-berlin-test.iso -SshKey $env:USERPROFILE\.ssh\ks_test_key `
+      -Disks 2 -DiskGB 20 -DiskGB2 40
+  # L'ISO deve essere stata generata con "build-iso.sh --disks 2" (topologia dual).
 #>
 param(
     [Parameter(Mandatory=$true)][string]$Iso,
@@ -16,15 +26,27 @@ param(
     [string]$VmName = "ks-berlin-boottest-$([guid]::NewGuid().ToString('N').Substring(0,8))",
     [int]$TimeoutSec = 5400,
     [int]$MemoryGB = 4,
+    [ValidateSet(1, 2)][int]$Disks = 1,
     [int]$DiskGB = 20,
+    [int]$DiskGB2 = 40,
     [string]$SwitchName = "Default Switch",
-    [int]$SshPort = 22
+    [int]$SshPort = 22,
+    [string]$DatastoreMountRoot = "/grastorp/volumes",
+    [string]$DatastoreSymlinkName = "datastore",
+    [string]$DatastoreFilesystem = "xfs"
 )
+
+if ($Disks -eq 2 -and $DiskGB -eq $DiskGB2) {
+    throw "-DiskGB e -DiskGB2 sono uguali (${DiskGB}GB): la topologia dual-disk assegna il sistema al disco " +
+          "piu' piccolo (match: size: smallest in iso/storage-dual-disk.yaml) — dischi di taglia identica " +
+          "non testano quell'euristica. Usa due valori diversi."
+}
 
 $ErrorActionPreference = "Stop"
 $isoPath = (Resolve-Path $Iso).Path
 $buildDir = Split-Path $isoPath -Parent
 $vhdPath = Join-Path $buildDir "$VmName.vhdx"
+$vhdPath2 = Join-Path $buildDir "$VmName-datastore.vhdx"
 $pipeName = "ks-berlin-$VmName"
 $logPath = Join-Path $buildDir "$VmName.serial.log"
 
@@ -37,14 +59,22 @@ function Cleanup {
         Remove-VM -Name $VmName -Force -ErrorAction SilentlyContinue
     }
     if (Test-Path $vhdPath) { Remove-Item $vhdPath -Force -ErrorAction SilentlyContinue }
+    if (Test-Path $vhdPath2) { Remove-Item $vhdPath2 -Force -ErrorAction SilentlyContinue }
 }
 
 try {
-    Log "Creo VM '$VmName' (Gen2, ${MemoryGB}GB RAM, disco ${DiskGB}GB, switch '$SwitchName')..."
+    Log "Creo VM '$VmName' (Gen2, ${MemoryGB}GB RAM, $Disks disco/i, switch '$SwitchName')..."
     New-VM -Name $VmName -MemoryStartupBytes ($MemoryGB * 1GB) -Generation 2 `
         -NewVHDPath $vhdPath -NewVHDSizeBytes ($DiskGB * 1GB) -SwitchName $SwitchName | Out-Null
     Set-VMProcessor -VMName $VmName -Count 4
     Set-VMFirmware -VMName $VmName -EnableSecureBoot Off
+
+    if ($Disks -eq 2) {
+        Log "Aggiungo secondo VHD da ${DiskGB2}GB (datastore, atteso disco 'grande')..."
+        New-VHD -Path $vhdPath2 -SizeBytes ($DiskGB2 * 1GB) -Dynamic | Out-Null
+        Add-VMHardDiskDrive -VMName $VmName -Path $vhdPath2 -ControllerType SCSI
+    }
+
     Add-VMDvdDrive -VMName $VmName -Path $isoPath
     $dvd = Get-VMDvdDrive -VMName $VmName
     Set-VMFirmware -VMName $VmName -FirstBootDevice $dvd
@@ -73,6 +103,7 @@ try {
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
     $sshOk = $false
     $lastHeartbeat = 0
+    $vmIp = $null
 
     while ($sw.Elapsed.TotalSeconds -lt $TimeoutSec) {
         Start-Sleep -Seconds 15
@@ -85,6 +116,7 @@ try {
                 -o ConnectTimeout=5 -o BatchMode=yes admin@$ip 'echo HYPERV_SSH_OK' 2>$null
             if ($sshTest -match 'HYPERV_SSH_OK') {
                 $sshOk = $true
+                $vmIp = $ip
                 Log "Login SSH riuscito su $ip! Autoinstall completato senza prompt."
                 break
             }
@@ -105,6 +137,29 @@ try {
         Log "TIMEOUT: autoinstall/SSH non completato entro ${TimeoutSec}s. Ultime righe seriali:"
         if (Test-Path $logPath) { Get-Content $logPath -Tail 60 }
         exit 1
+    }
+
+    # Verifica remota del Datastore (Fase 2, issue #2): il symlink deve risolvere
+    # a un mountpoint reale del filesystem atteso. Stesso controllo di
+    # boot-test-qemu.sh (findmnt sul target del symlink).
+    $datastoreLink = "$DatastoreMountRoot/$DatastoreSymlinkName"
+    $sshArgs = @('-p', $SshPort, '-i', $SshKey, '-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=NUL', '-o', 'ConnectTimeout=5', '-o', 'BatchMode=yes', "admin@$vmIp")
+    $remoteCheck = "set -e; target=`$(readlink -f '$datastoreLink'); fstype=`$(findmnt -no FSTYPE --target `"`$target`"); [ `"`$fstype`" = '$DatastoreFilesystem' ]"
+    & ssh @sshArgs $remoteCheck
+    if ($LASTEXITCODE -ne 0) {
+        Log "Datastore non montato correttamente su ${datastoreLink} (atteso fstype ${DatastoreFilesystem}) — diagnostica remota:"
+        & ssh @sshArgs "lsblk -f; echo ---; findmnt; echo ---; ls -la '$DatastoreMountRoot'" 2>&1
+        exit 1
+    }
+    Log "Datastore verificato: $datastoreLink montato come $DatastoreFilesystem."
+
+    if ($Disks -eq 2) {
+        # Verifica aggiuntiva specifica dual-disk: il disco di sistema (root) deve
+        # essere quello piu' piccolo — conferma o smentisce l'euristica non ancora
+        # validata segnalata in logbook-fase2.md.
+        $rootSizeCheck = "lsblk -bno SIZE `$(findmnt -no SOURCE --target /) | head -1"
+        $rootDiskBytes = & ssh @sshArgs $rootSizeCheck
+        Log "Dimensione del device root riportata dalla VM: $rootDiskBytes byte (disco system atteso: ${DiskGB}GB, il piu' piccolo dei due)."
     }
 
     Log "Test superato."
