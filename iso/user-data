@@ -1,0 +1,47 @@
+#cloud-config
+# autoinstall (Subiquity) per la Fase 1 — vedi README e issue #1.
+#
+# Questo file è un template: il placeholder __SSH_AUTHORIZED_KEY__ viene
+# sostituito da scripts/build-iso.sh con la chiave pubblica passata a
+# build-time (opzione -k/--ssh-key). Nessuna chiave è hardcoded qui.
+autoinstall:
+  version: 1
+
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+
+  identity:
+    hostname: kickstart-berlin
+    username: admin
+    # Hash placeholder (password casuale, mai usata): il login via password
+    # viene disabilitato subito dopo l'installazione dal late-command
+    # "usermod -L" qui sotto. L'unico metodo di accesso previsto è la
+    # chiave SSH iniettata a build-time.
+    password: "$6$Z1HJIr/8n/LtcnpB$YRIOAp8vqPGrNSTHHwiyaDbx1rjs9JHuCWoZeXxV45c5H9SgJiCdWn92s2Ltt/69pliWRPxHsCg6RFSMpC1va."
+
+  ssh:
+    install-server: true
+    allow-pw: false
+    authorized-keys:
+      - "__SSH_AUTHORIZED_KEY__"
+
+  # Schema di partizionamento minimale per la Fase 1 (installazione base
+  # non interattiva). Lo schema definitivo a due partizioni (sistema +
+  # storage dedicato al Datastore Grastorp) è oggetto della Fase 2
+  # (issue #2) e sostituirà questo layout.
+  storage:
+    layout:
+      name: lvm
+
+  updates: security
+  package_update: true
+  package_upgrade: false
+  packages:
+    - openssh-server
+
+  late-commands:
+    # Login via password disabilitato: solo chiave SSH (vedi identity.password).
+    - curtin in-target --target=/target -- usermod -L admin
+
+  shutdown: reboot
