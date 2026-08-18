@@ -104,6 +104,59 @@ step, e del ciclo completo install→reboot→SSH, viene demandata a:
    esegua build+boot lì, o incolli le istruzioni preparate in quella
    sessione.
 
+## 2026-08-18 — Test #3: ambiente Docker locale (HP Z8 G4), rete reale — interrotto volontariamente
+
+Ambiente: workstation Windows locale dell'utente (HP Z8 G4, hostname
+`DESKTOP-6MP79TM`), Docker Desktop (28 CPU / ~468GB RAM disponibili).
+Creati `docker/Dockerfile` + `docker/docker-compose.yml` (Ubuntu 24.04 +
+xorriso/qemu/shellcheck/python3-yaml) per non dover installare tooling
+Linux sull'host Windows né toccare la distro WSL Ubuntu esistente.
+Nessun `/dev/kvm` esposto nel container (limite noto di Docker Desktop su
+Windows): QEMU gira in TCG, non accelerato. Rete diretta reale, nessun
+proxy applicativo (a differenza del sandbox cloud dei test #1/#2).
+
+**Bug collaterale trovato e corretto**: il working tree Windows aveva
+`core.autocrlf=true` e il repo non aveva un `.gitattributes` — al
+checkout, `scripts/*.sh`, `iso/user-data`, `.github/workflows/ci.yml` e
+altri file testuali venivano convertiti in CRLF, rompendo gli script per
+qualunque tool Linux (shellcheck falliva con `SC1017`, literal carriage
+return). I blob committati erano già LF puro (verificato byte a byte):
+il problema riguardava solo il checkout locale, ma si sarebbe ripetuto
+per chiunque clonasse il repo su Windows. Fix: aggiunto `.gitattributes`
+(commit `a796ee9`, forza `eol=lf` su script/YAML/config) e ripulito il
+working tree locale.
+
+**Build ISO**: `scripts/build-iso.sh` eseguito nel container con una
+chiave SSH usa-e-getta generata ad hoc (mai committata, coerente con la
+politica "nessuna chiave hardcoded"). Completata con successo:
+`build/kickstart-berlin-test.iso`, checksum
+`03e82a1da2e7f15b254d5f9ad7f0815c51aba33ef66b3cfb39fbde70fab0ae82`.
+
+**Boot test**: `scripts/boot-test-qemu.sh` avviato alle
+`2026-08-18T18:10:39Z` (timeout 5400s, RAM VM 8192MB). Interrotto
+volontariamente (`docker stop`) alle `2026-08-18T18:15:08Z` — **~4m28s**
+di wall-clock. Ultimo heartbeat a 255s, ancora nel boot del live
+environment dell'installer (`systemd-logind.service` in fase di avvio):
+non ancora arrivato allo stage Subiquity/autoinstall. Nessun bug
+osservato in questo run — la causa dell'interruzione è solo la lentezza
+di TCG (emulazione software pura, nessuna accelerazione hardware); a
+quel ritmo il ciclo completo (install + reboot + SSH) avrebbe richiesto
+probabilmente diverse ore.
+
+**Decisione**: interrompere questo percorso e passare a un boot test
+Hyper-V nativo sulla stessa macchina (hypervisor già attivo, VM Gen2,
+accelerazione hardware reale — molto più veloce di TCG). Bloccante
+trovato: la sessione Claude Code corrente non ha privilegi elevati
+(`IsInRole(Administrator) = False`) e non può pilotare `New-VM`/`Start-VM`
+(errore di autorizzazione); l'elevazione UAC non è ottenibile a sessione
+già avviata, va decisa alla creazione del processo. Prossimo passo:
+riavviare l'app/CLI Claude Code come Amministratore per sbloccare il
+controllo diretto di Hyper-V nelle sessioni future.
+
+In parallelo, il run CI GitHub Actions (`workflow_dispatch` su runner
+ufficiale, rete diretta) resta in corso, non interrotto — esito ancora
+pendente.
+
 ## Stato rispetto alla Definition of Done (issue #1)
 
 - [x] Script di repack ISO con verifica checksum.
@@ -119,9 +172,14 @@ step, e del ciclo completo install→reboot→SSH, viene demandata a:
 
 ## Prossimi passi
 
-- [ ] Utente: avviare `workflow_dispatch` su CI con `run_integration: true`.
-- [ ] Utente: eseguire build+boot (QEMU o Hyper-V) sulla sessione locale
-      con rete reale; riportare esito.
-- [ ] Aggiornare questo logbook con l'esito di entrambi.
+- [x] Utente: avviare `workflow_dispatch` su CI con `run_integration: true`
+      — lanciato (serviva prima registrare `ci.yml` su `develop`, commit
+      `c4bfe59`); esito ancora pendente.
+- [ ] Riavviare la sessione Claude Code come Amministratore per poter
+      pilotare Hyper-V direttamente (`New-VM`/`Start-VM`).
+- [ ] Eseguire il boot test in una VM Hyper-V Gen2 (accelerazione
+      hardware, molto più veloce del TCG usato nel test #3) con l'ISO
+      già generata (`build/kickstart-berlin-test.iso`); riportare esito.
+- [ ] Aggiornare questo logbook con l'esito di CI e Hyper-V.
 - [ ] Se confermato il ciclo completo, aggiornare la checklist DoD
       nell'issue #1 e chiuderla.
