@@ -141,11 +141,15 @@ for rel_path in "${CANDIDATE_BOOT_FILES[@]}"; do
        >/dev/null 2>&1; then
     # Aggiunge "autoinstall ds=nocloud;s=/cdrom/server/" alla riga kernel
     # (grub) o alla riga append (isolinux), così l'installazione parte
-    # senza alcun prompt sia in modalità UEFI che legacy BIOS.
+    # senza alcun prompt sia in modalità UEFI che legacy BIOS. Aggiunge
+    # anche "console=ttyS0,115200n8": senza, kernel/casper/Subiquity non
+    # scrivono nulla sulla console seriale (solo GRUB lo fa di default),
+    # rendendo impossibile qualunque diagnosi headless (QEMU -nographic,
+    # IPMI/serial-over-LAN su hardware reale).
     if [[ "$rel_path" == isolinux/* ]]; then
-      sed -i 's|^\(\s*append .*\)$|\1 autoinstall ds=nocloud;s=/cdrom/server/|' "$local_path"
+      sed -i 's|^\(\s*append .*\)$|\1 console=ttyS0,115200n8 autoinstall ds=nocloud;s=/cdrom/server/|' "$local_path"
     else
-      sed -i 's|^\(\s*linux\s\+/casper/vmlinuz.*\)$|\1 autoinstall ds=nocloud\\;s=/cdrom/server/|' "$local_path"
+      sed -i 's|/casper/vmlinuz|/casper/vmlinuz console=ttyS0,115200n8 autoinstall ds=nocloud\\;s=/cdrom/server/|' "$local_path"
     fi
     MAP_ARGS+=(-map "$local_path" "/${rel_path}")
     log "Modifico voce di boot: /${rel_path}"

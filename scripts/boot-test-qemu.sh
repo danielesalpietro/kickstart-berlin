@@ -107,6 +107,7 @@ log "QEMU avviato (pid ${QEMU_PID}). Attendo il completamento dell'autoinstall e
 log "riavvio nel sistema installato, poi provo il login SSH (timeout ${TIMEOUT}s) ..."
 
 START_TS="$(date +%s)"
+LAST_HEARTBEAT=0
 SSH_OK=0
 while true; do
   NOW="$(date +%s)"
@@ -116,6 +117,10 @@ while true; do
   fi
   if ! kill -0 "$QEMU_PID" 2>/dev/null; then
     err "QEMU è terminato inaspettatamente prima del timeout (vedi ${SERIAL_LOG})"
+  fi
+  if (( ELAPSED - LAST_HEARTBEAT >= 120 )); then
+    LAST_HEARTBEAT=$ELAPSED
+    log "... ancora in attesa (${ELAPSED}s/${TIMEOUT}s) — ultima riga seriale: $(tail -n1 "$SERIAL_LOG" 2>/dev/null | tr -d '\r')"
   fi
   if ssh -p "$SSH_PORT" -i "$SSH_PRIVATE_KEY" \
       -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
