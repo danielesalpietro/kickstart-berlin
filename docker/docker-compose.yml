@@ -1,0 +1,13 @@
+services:
+  tools:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ..:/repo
+      - iso-cache:/cache
+    working_dir: /repo
+    entrypoint: ["/bin/bash", "-c"]
+
+volumes:
+  iso-cache:

@@ -18,6 +18,7 @@ OUTPUT_ISO=""
 SSH_KEY_PATH=""
 SSH_KEY_STRING=""
 WORK_DIR=""
+CACHE_DIR=""
 SKIP_GPG_CHECK="${SKIP_GPG_CHECK:-0}"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
@@ -38,6 +39,15 @@ Opzioni:
       --skip-gpg-check      Salta la verifica della firma GPG di SHA256SUMS
                              (la verifica del checksum SHA256 resta comunque
                              obbligatoria).
+      --cache-dir <path>    Directory di cache per l'ISO ufficiale scaricata
+                             (opzionale, pensata per iterazioni locali
+                             ripetute, es. su un volume Docker persistente).
+                             Il checksum SHA256 viene comunque riverificato
+                             ad ogni build contro SHA256SUMS scaricato al
+                             momento: se non corrisponde (nuova versione,
+                             cache corrotta) si ri-scarica automaticamente.
+                             Se omesso (default, usato in CI/produzione),
+                             l'ISO viene sempre scaricata da zero.
   -h, --help                Mostra questo messaggio.
 EOF
 }
@@ -52,6 +62,7 @@ while [[ $# -gt 0 ]]; do
     -v|--version) UBUNTU_VERSION="$2"; shift 2 ;;
     -o|--output) OUTPUT_ISO="$2"; shift 2 ;;
     --skip-gpg-check) SKIP_GPG_CHECK=1; shift ;;
+    --cache-dir) CACHE_DIR="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) err "Opzione sconosciuta: $1 (vedi --help)" ;;
   esac
@@ -80,22 +91,32 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 
 BASE_URL="https://releases.ubuntu.com/${UBUNTU_VERSION}"
 SOURCE_ISO_NAME="ubuntu-${UBUNTU_VERSION}-live-server-amd64.iso"
-SOURCE_ISO="${WORK_DIR}/${SOURCE_ISO_NAME}"
-
-log "Scarico ${SOURCE_ISO_NAME} da ${BASE_URL} ..."
-curl -fL --retry 3 -o "$SOURCE_ISO" "${BASE_URL}/${SOURCE_ISO_NAME}"
 
 log "Scarico SHA256SUMS e SHA256SUMS.gpg ..."
 curl -fL --retry 3 -o "${WORK_DIR}/SHA256SUMS" "${BASE_URL}/SHA256SUMS"
 curl -fL --retry 3 -o "${WORK_DIR}/SHA256SUMS.gpg" "${BASE_URL}/SHA256SUMS.gpg"
 
-log "Verifico checksum SHA256 dell'ISO ufficiale ..."
 EXPECTED_SUM="$(grep " \*${SOURCE_ISO_NAME}\$" "${WORK_DIR}/SHA256SUMS" | awk '{print $1}')"
 [[ -n "$EXPECTED_SUM" ]] || err "checksum non trovato in SHA256SUMS per ${SOURCE_ISO_NAME}"
-ACTUAL_SUM="$(sha256sum "$SOURCE_ISO" | awk '{print $1}')"
-[[ "$EXPECTED_SUM" == "$ACTUAL_SUM" ]] \
-  || err "checksum non corrispondente! atteso=${EXPECTED_SUM} ottenuto=${ACTUAL_SUM}"
-log "Checksum OK (${ACTUAL_SUM})"
+
+if [[ -n "$CACHE_DIR" ]]; then
+  mkdir -p "$CACHE_DIR"
+  SOURCE_ISO="${CACHE_DIR}/${SOURCE_ISO_NAME}"
+else
+  SOURCE_ISO="${WORK_DIR}/${SOURCE_ISO_NAME}"
+fi
+
+if [[ -n "$CACHE_DIR" && -f "$SOURCE_ISO" ]] \
+    && [[ "$(sha256sum "$SOURCE_ISO" | awk '{print $1}')" == "$EXPECTED_SUM" ]]; then
+  log "Trovata ${SOURCE_ISO_NAME} in cache (${CACHE_DIR}), checksum verificato: riuso senza riscaricare."
+else
+  log "Scarico ${SOURCE_ISO_NAME} da ${BASE_URL} ..."
+  curl -fL --retry 3 -o "$SOURCE_ISO" "${BASE_URL}/${SOURCE_ISO_NAME}"
+  ACTUAL_SUM="$(sha256sum "$SOURCE_ISO" | awk '{print $1}')"
+  [[ "$EXPECTED_SUM" == "$ACTUAL_SUM" ]] \
+    || err "checksum non corrispondente! atteso=${EXPECTED_SUM} ottenuto=${ACTUAL_SUM}"
+  log "Checksum OK (${ACTUAL_SUM})"
+fi
 
 if [[ "$SKIP_GPG_CHECK" != "1" ]]; then
   if command -v gpg >/dev/null 2>&1; then

@@ -14,11 +14,21 @@ autoinstall:
   identity:
     hostname: kickstart-berlin
     username: admin
-    # Hash placeholder (password casuale, mai usata): il login via password
-    # viene disabilitato subito dopo l'installazione dal late-command
-    # "usermod -L" qui sotto. L'unico metodo di accesso previsto è la
-    # chiave SSH iniettata a build-time.
-    password: "$6$Z1HJIr/8n/LtcnpB$YRIOAp8vqPGrNSTHHwiyaDbx1rjs9JHuCWoZeXxV45c5H9SgJiCdWn92s2Ltt/69pliWRPxHsCg6RFSMpC1va."
+    # Hash placeholder (password casuale, mai usata) con prefisso "!":
+    # convenzione standard di /etc/shadow per un account gia' bloccato
+    # (e' esattamente cio' che fa "usermod -L" sotto il cofano). Bloccato
+    # fin dalla creazione dell'account, nessuna finestra temporale in cui
+    # l'hash sia valido. L'unico metodo di accesso previsto e' la chiave
+    # SSH iniettata a build-time (vedi ssh.allow-pw sotto).
+    #
+    # In precedenza il blocco avveniva via late-commands ("usermod -L
+    # admin"), ma si e' rivelato inaffidabile: in due run reali indipendenti
+    # (CI GitHub Actions e boot test Hyper-V locale, entrambi con rete
+    # diretta) il comando falliva con exit 6 ("utente non trovato") a quel
+    # punto dell'installazione, nonostante la documentazione Subiquity
+    # affermi che l'account identity venga creato durante l'installazione
+    # e non al primo boot. Vedi logbook-fase1.md per i dettagli.
+    password: "!$6$Z1HJIr/8n/LtcnpB$YRIOAp8vqPGrNSTHHwiyaDbx1rjs9JHuCWoZeXxV45c5H9SgJiCdWn92s2Ltt/69pliWRPxHsCg6RFSMpC1va."
 
   ssh:
     install-server: true
@@ -39,9 +49,29 @@ autoinstall:
   package_upgrade: false
   packages:
     - openssh-server
+    # NOTA: "hyperv-daemons" (comodita' di solo testing, per vedere IP/
+    # hostname da Get-VMNetworkAdapter) e' stato provato e RIMOSSO: in un
+    # boot test QEMU/WSL ha fatto fallire l'intera installazione (curtin
+    # "system-install --download-only hyperv-daemons" con exit 100, causa
+    # non investigata oltre — vedi logbook-fase1.md). Non e' un requisito
+    # della Fase 1 (il nodo target e' bare-metal, non Hyper-V): per capire
+    # l'IP di una VM di test Hyper-V si puo' usare l'ARP dell'host per il
+    # MAC address della VM (funziona senza toccare l'autoinstall).
 
   late-commands:
-    # Login via password disabilitato: solo chiave SSH (vedi identity.password).
-    - curtin in-target --target=/target -- usermod -L admin
+    # L'account admin ha la password bloccata (vedi identity.password
+    # sopra) e l'unico accesso e' via chiave SSH: richiedere ANCHE una
+    # password per sudo lo renderebbe di fatto inutilizzabile (nessuna
+    # password valida esiste). L'accesso e' gia' garantito dalla chiave
+    # SSH, quindi NOPASSWD qui non abbassa la sicurezza reale.
+    #
+    # A differenza di "usermod -L admin" (rimosso, vedi sopra e
+    # logbook-fase1.md), scrivere un file statico in /etc/sudoers.d non
+    # dipende dall'esistenza dell'utente nel database NSS del target in
+    # quel momento dell'installazione: e' una semplice scrittura di file.
+    - >-
+      curtin in-target --target=/target -- sh -c
+      'echo "admin ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-admin-nopasswd
+      && chmod 0440 /etc/sudoers.d/90-admin-nopasswd'
 
   shutdown: reboot
