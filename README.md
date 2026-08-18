@@ -5,8 +5,9 @@ boot fino a un host pronto (OS, driver NVIDIA, Docker, rete, benchmark
 hardware). Base derivata dal flusso di setup host di **Vast.ai**, propedeutica
 all'integrazione in [Grastorp](https://github.com/danielesalpietro/grastorp).
 
-> Stato: **early stage**. Solo README con il piano mappato — nessuno script
-> ancora implementato.
+> Stato: **early stage**. Fase 1 (ISO autoinstall) implementata, vedi
+> [`iso/`](iso/), [`scripts/`](scripts/) e [`docs/usb-boot.md`](docs/usb-boot.md).
+> Le altre fasi sono ancora da fare.
 
 ## Perché
 
@@ -45,7 +46,7 @@ equivalente per un nodo Grastorp.
 
 | # | Fase (Vast.ai) | Cosa fa Vast.ai | Equivalente kickstart-berlin / Grastorp | Stato |
 |---|---|---|---|---|
-| 1 | Sistema operativo | Ubuntu Server 22.04/24.04 da ISO ufficiale | Stessa base OS, via `autoinstall` invece di installazione manuale interattiva | Da fare |
+| 1 | Sistema operativo | Ubuntu Server 22.04/24.04 da ISO ufficiale | Stessa base OS, via `autoinstall` invece di installazione manuale interattiva | **Fatto** ([#1](https://github.com/danielesalpietro/kickstart-berlin/issues/1)) |
 | 2 | Partizionamento disco | `/` ext4 (~100GB) + resto disco separato (xfs, non montato) | Stesso schema: partizione di sistema + partizione dedicata allo storage (Datastore Grastorp) | Da fare |
 | 3 | Preparazione storage | Estensione LVM, rimozione loopback Docker, dati Docker sul filesystem principale | Stesso fix, necessario ugualmente per non limitare la Model Library di Grastorp a un loopback | Da fare |
 | 4 | Driver NVIDIA + Container Toolkit | Driver pinnato (es. 535) + NVIDIA Container Toolkit da repo ufficiale | Identico: prerequisito già documentato nel README di Grastorp | Da fare |
@@ -71,6 +72,31 @@ equivalente per un nodo Grastorp.
 - **Nessun daemon proprietario di terzi**: al posto del Kaalia daemon (fase
   7) e della CLI/listing Vast.ai (fasi 10/13), il post-install porta
   direttamente all'avvio di Grastorp via `docker compose up`.
+
+## Fase 1 — build dell'ISO autoinstall
+
+- `iso/user-data`, `iso/meta-data` — configurazione autoinstall (Subiquity):
+  locale, tastiera, utente `admin` con SSH abilitato e login via password
+  disabilitato. La chiave pubblica SSH **non** è hardcoded: viene iniettata
+  a build-time.
+- `scripts/build-iso.sh` — scarica l'ISO ufficiale Ubuntu Server, ne
+  verifica checksum SHA256 (e firma GPG, se `gpg` è disponibile), la
+  ripacchetta iniettando `iso/user-data`/`iso/meta-data` e produce un'ISO
+  bootabile pronta per l'installazione non interattiva:
+
+  ```sh
+  scripts/build-iso.sh -k ~/.ssh/id_ed25519.pub
+  ```
+
+- `scripts/boot-test-qemu.sh` — boota l'ISO generata in QEMU headless su un
+  disco virtuale throwaway e verifica che l'installazione completi senza
+  prompt e che l'host risultante sia raggiungibile via SSH con la chiave
+  iniettata (usato dal job di integrazione in CI).
+- `scripts/validate-autoinstall.py` — validazione sintattica/strutturale di
+  `iso/user-data` (job "unit" in CI, ad ogni PR).
+- [`docs/usb-boot.md`](docs/usb-boot.md) — istruzioni per scrivere l'ISO su
+  chiavetta USB (`dd`, balenaEtcher/Rufus) e nota su PXE/iPXE come
+  alternativa futura.
 
 ## Riferimenti
 
