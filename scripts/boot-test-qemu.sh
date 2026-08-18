@@ -150,7 +150,13 @@ while true; do
 done
 
 if [[ "$SSH_OK" != "1" ]]; then
-  log "--- ultime 200 righe della console seriale (${SERIAL_LOG}) ---"
+  # WORK_DIR (e quindi SERIAL_LOG) viene rimosso dal trap di cleanup a fine
+  # script: salva il log seriale completo accanto all'ISO prima che sparisca,
+  # altrimenti l'unica diagnostica disponibile sarebbe la tail qui sotto
+  # (insufficiente per errori tardivi, es. nei late-commands).
+  PERSISTED_LOG="${ISO}.serial.log"
+  cp "$SERIAL_LOG" "$PERSISTED_LOG" 2>/dev/null || true
+  log "--- ultime 200 righe della console seriale (log completo: ${PERSISTED_LOG}) ---"
   tail -n 200 "$SERIAL_LOG" || true
   err "timeout: impossibile completare l'autoinstall e connettersi via SSH entro ${TIMEOUT}s"
 fi
