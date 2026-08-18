@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+    inputs:
+      run_integration:
+        description: >-
+          Esegui anche il boot test QEMU (build ISO reale da
+          releases.ubuntu.com, download di alcuni GB + boot completo).
+        type: boolean
+        default: false
+
+jobs:
+  validate-autoinstall:
+    name: Unit — valida autoinstall YAML e script
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installa dipendenze
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-yaml shellcheck
+
+      - name: Valida sintassi e struttura di iso/user-data
+        run: python3 scripts/validate-autoinstall.py iso/user-data
+
+      - name: Shellcheck sugli script di build/test
+        run: shellcheck scripts/*.sh
+
+  build-and-boot-test:
+    name: Integrazione — build ISO reale + boot QEMU/KVM
+    needs: validate-autoinstall
+    runs-on: ubuntu-latest
+    # Job pesante (download ISO ufficiale ~2-3GB + installazione completa in
+    # QEMU): non gira su ogni PR, solo su push ai branch principali o su
+    # richiesta esplicita via workflow_dispatch.
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.run_integration)
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installa dipendenze (xorriso, QEMU/KVM)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xorriso qemu-system-x86 qemu-utils
+
+      - name: Abilita accesso KVM al runner
+        run: |
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+            echo "KVM disponibile."
+          else
+            echo "KVM non disponibile su questo runner: si userà TCG (più lento)."
+          fi
+
+      - name: Genera keypair SSH di test
+        run: ssh-keygen -t ed25519 -N "" -f "${{ runner.temp }}/test_key"
+
+      - name: Costruisci ISO autoinstall
+        run: |
+          scripts/build-iso.sh \
+            -k "${{ runner.temp }}/test_key.pub" \
+            -o "${{ runner.temp }}/kickstart-berlin-test.iso"
+
+      - name: Boot ISO in QEMU e verifica autoinstall + login SSH
+        run: |
+          scripts/boot-test-qemu.sh \
+            -i "${{ runner.temp }}/kickstart-berlin-test.iso" \
+            -k "${{ runner.temp }}/test_key" \
+            -t 2700
