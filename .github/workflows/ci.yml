@@ -32,16 +32,22 @@ jobs:
         run: shellcheck scripts/*.sh
 
   build-and-boot-test:
-    name: Integrazione — build ISO reale + boot QEMU/KVM
+    name: Integrazione — build ISO reale + boot QEMU/KVM (${{ matrix.disks }} disco/i)
     needs: validate-autoinstall
     runs-on: ubuntu-latest
     # Job pesante (download ISO ufficiale ~2-3GB + installazione completa in
     # QEMU): non gira su ogni PR, solo su push ai branch principali o su
-    # richiesta esplicita via workflow_dispatch.
+    # richiesta esplicita via workflow_dispatch. Matrice sulle due topologie
+    # dischi della Fase 2 (issue #2): scenario disco singolo e doppio disco,
+    # come da piano di test dell'issue.
     if: >-
       github.event_name == 'push' ||
       (github.event_name == 'workflow_dispatch' && inputs.run_integration)
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        disks: [1, 2]
     steps:
       - uses: actions/checkout@v4
 
@@ -62,15 +68,17 @@ jobs:
       - name: Genera keypair SSH di test
         run: ssh-keygen -t ed25519 -N "" -f "${{ runner.temp }}/test_key"
 
-      - name: Costruisci ISO autoinstall
+      - name: Costruisci ISO autoinstall (${{ matrix.disks }} disco/i)
         run: |
           scripts/build-iso.sh \
             -k "${{ runner.temp }}/test_key.pub" \
+            --disks "${{ matrix.disks }}" \
             -o "${{ runner.temp }}/kickstart-berlin-test.iso"
 
-      - name: Boot ISO in QEMU e verifica autoinstall + login SSH
+      - name: Boot ISO in QEMU, verifica autoinstall + login SSH + Datastore
         run: |
           scripts/boot-test-qemu.sh \
             -i "${{ runner.temp }}/kickstart-berlin-test.iso" \
             -k "${{ runner.temp }}/test_key" \
+            --disks "${{ matrix.disks }}" \
             -t 2700

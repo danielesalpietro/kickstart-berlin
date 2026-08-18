@@ -20,6 +20,10 @@ TIMEOUT="${TIMEOUT:-3600}"
 MEMORY_MB="${MEMORY_MB:-4096}"
 DISK_SIZE="${DISK_SIZE:-20G}"
 SSH_PORT="${SSH_PORT:-2222}"
+NUM_DISKS="${NUM_DISKS:-1}"
+DATASTORE_MOUNT_ROOT="${DATASTORE_MOUNT_ROOT:-/grastorp/volumes}"
+DATASTORE_SYMLINK_NAME="${DATASTORE_SYMLINK_NAME:-datastore}"
+DATASTORE_FILESYSTEM="${DATASTORE_FILESYSTEM:-xfs}"
 
 usage() {
   cat <<EOF
@@ -33,7 +37,12 @@ Opzioni:
   -t, --timeout <sec>    Timeout totale, install + boot + SSH
                           (default: ${TIMEOUT}).
   -m, --memory <MB>      RAM della VM (default: ${MEMORY_MB}).
-      --disk-size <sz>   Dimensione disco virtuale throwaway (default: ${DISK_SIZE}).
+      --disk-size <sz>   Dimensione di ciascun disco virtuale throwaway
+                          (default: ${DISK_SIZE}).
+      --disks <1|2>      Numero di dischi virtuali da creare (Fase 2,
+                          issue #2): deve corrispondere alla topologia
+                          usata per generare l'ISO (--disks di
+                          build-iso.sh). Default: ${NUM_DISKS}.
       --ssh-port <port>  Porta host da inoltrare alla porta 22 guest
                           (default: ${SSH_PORT}).
   -h, --help             Mostra questo messaggio.
@@ -50,6 +59,9 @@ while [[ $# -gt 0 ]]; do
     -t|--timeout) TIMEOUT="$2"; shift 2 ;;
     -m|--memory) MEMORY_MB="$2"; shift 2 ;;
     --disk-size) DISK_SIZE="$2"; shift 2 ;;
+    --disks)
+      [[ "$2" == 1 || "$2" == 2 ]] || err "--disks accetta solo 1 o 2, ricevuto: $2"
+      NUM_DISKS="$2"; shift 2 ;;
     --ssh-port) SSH_PORT="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) err "Opzione sconosciuta: $1 (vedi --help)" ;;
@@ -76,8 +88,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-DISK="${WORK_DIR}/test-disk.qcow2"
-qemu-img create -f qcow2 "$DISK" "$DISK_SIZE" >/dev/null
+DISK_ARGS=()
+for ((i = 1; i <= NUM_DISKS; i++)); do
+  DISK="${WORK_DIR}/test-disk-${i}.qcow2"
+  qemu-img create -f qcow2 "$DISK" "$DISK_SIZE" >/dev/null
+  DISK_ARGS+=(-drive "file=${DISK},if=virtio,format=qcow2")
+done
+log "Dischi virtuali throwaway creati: ${NUM_DISKS} x ${DISK_SIZE}"
 
 KVM_ARGS=(-cpu max)
 if [[ -e /dev/kvm && -r /dev/kvm && -w /dev/kvm ]]; then
@@ -98,7 +115,7 @@ qemu-system-x86_64 \
   -display none -nographic -serial "file:${SERIAL_LOG}" -monitor none \
   -boot once=d \
   -cdrom "$ISO" \
-  -drive "file=${DISK},if=virtio,format=qcow2" \
+  "${DISK_ARGS[@]}" \
   -netdev "user,id=net0,hostfwd=tcp::${SSH_PORT}-:22" -device virtio-net-pci,netdev=net0 \
   >/dev/null 2>&1 &
 QEMU_PID=$!
@@ -139,4 +156,20 @@ if [[ "$SSH_OK" != "1" ]]; then
 fi
 
 log "Login SSH riuscito con la chiave iniettata a build-time: autoinstall completato"
-log "senza prompt, host installato e raggiungibile. Test superato."
+log "senza prompt, host installato e raggiungibile."
+
+log "Verifico il mount del Datastore Grastorp (Fase 2, issue #2) ..."
+SSH_CMD=(ssh -p "$SSH_PORT" -i "$SSH_PRIVATE_KEY" \
+  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+  -o ConnectTimeout=5 -o BatchMode=yes admin@127.0.0.1)
+DATASTORE_LINK="${DATASTORE_MOUNT_ROOT}/${DATASTORE_SYMLINK_NAME}"
+REMOTE_CHECK="set -e; target=\$(readlink -f '${DATASTORE_LINK}'); \
+fstype=\$(findmnt -no FSTYPE --target \"\$target\"); \
+[ \"\$fstype\" = '${DATASTORE_FILESYSTEM}' ]"
+if ! "${SSH_CMD[@]}" "$REMOTE_CHECK"; then
+  log "--- diagnostica remota (lsblk, findmnt, symlink) ---"
+  "${SSH_CMD[@]}" "lsblk -f; echo ---; findmnt; echo ---; ls -la '${DATASTORE_MOUNT_ROOT}' 2>&1" || true
+  err "Datastore non montato correttamente su ${DATASTORE_LINK} (atteso fstype ${DATASTORE_FILESYSTEM})"
+fi
+
+log "Datastore verificato: ${DATASTORE_LINK} montato come ${DATASTORE_FILESYSTEM}. Test superato."

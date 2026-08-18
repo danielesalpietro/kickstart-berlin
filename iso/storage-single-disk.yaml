@@ -1,0 +1,59 @@
+    # Topologia "single": un solo disco fisico. Sistema (EFI + root) e
+    # Datastore Grastorp condividono lo stesso disco: __SYSTEM_PARTITION_SIZE__
+    # per il root, il resto del disco al Datastore.
+    swap:
+      size: 0
+    config:
+      - type: disk
+        id: system-disk
+        match: {}
+        ptable: gpt
+        wipe: superblock
+        grub_device: true
+
+      - type: partition
+        id: efi-partition
+        device: system-disk
+        size: 512M
+        flag: boot
+
+      - type: format
+        id: efi-format
+        volume: efi-partition
+        fstype: fat32
+
+      - type: mount
+        id: efi-mount
+        device: efi-format
+        path: /boot/efi
+
+      - type: partition
+        id: root-partition
+        device: system-disk
+        size: __SYSTEM_PARTITION_SIZE__
+
+      - type: format
+        id: root-format
+        volume: root-partition
+        fstype: ext4
+
+      - type: mount
+        id: root-mount
+        device: root-format
+        path: /
+
+      - type: partition
+        id: datastore-partition
+        device: system-disk
+        size: -1
+
+      - type: format
+        id: datastore-format
+        volume: datastore-partition
+        fstype: __DATASTORE_FILESYSTEM__
+        label: __DATASTORE_LABEL__
+      # NOTA: nessuna azione "mount" qui per il Datastore. Il mountpoint
+      # finale dipende dalla UUID che mkfs genera in questo stesso step,
+      # non prevedibile staticamente in questo file: viene montato via
+      # late-commands (stesso procedimento manuale documentato da Vast.ai
+      # per il proprio /var/lib/docker: mkfs -> blkid -> fstab).

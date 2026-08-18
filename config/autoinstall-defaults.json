@@ -1,0 +1,22 @@
+{
+  "$comment": "Default centralizzati per la generazione dell'ISO autoinstall (scripts/build-iso.sh). Ogni valore qui e' un default: i flag CLI di build-iso.sh, quando passati, hanno sempre precedenza su questo file. Vedi README/issue #1 e #2 per il contesto di ciascun campo.",
+
+  "ubuntu_version": "24.04.2",
+
+  "identity": {
+    "hostname": "kickstart-berlin",
+    "username": "admin"
+  },
+
+  "storage": {
+    "$comment": "disk_topology seleziona quale frammento iso/storage-<topology>-disk.yaml viene iniettato in iso/user-data. 'single': un solo disco fisico (sistema + datastore sullo stesso disco). 'dual': due dischi fisici (sistema su uno, datastore sull'altro) - vedi issue #2.",
+    "disk_topology": "single",
+    "system_partition_size": "100G",
+    "datastore": {
+      "filesystem": "xfs",
+      "label": "grastorp-datastore",
+      "mount_root": "/grastorp/volumes",
+      "symlink_name": "datastore"
+    }
+  }
+}
