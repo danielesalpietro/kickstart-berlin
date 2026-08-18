@@ -19,6 +19,7 @@ SSH_PRIVATE_KEY=""
 TIMEOUT="${TIMEOUT:-3600}"
 MEMORY_MB="${MEMORY_MB:-4096}"
 DISK_SIZE="${DISK_SIZE:-20G}"
+DISK_SIZE_2="${DISK_SIZE_2:-40G}"
 SSH_PORT="${SSH_PORT:-2222}"
 NUM_DISKS="${NUM_DISKS:-1}"
 DATASTORE_MOUNT_ROOT="${DATASTORE_MOUNT_ROOT:-/grastorp/volumes}"
@@ -37,8 +38,16 @@ Opzioni:
   -t, --timeout <sec>    Timeout totale, install + boot + SSH
                           (default: ${TIMEOUT}).
   -m, --memory <MB>      RAM della VM (default: ${MEMORY_MB}).
-      --disk-size <sz>   Dimensione di ciascun disco virtuale throwaway
-                          (default: ${DISK_SIZE}).
+      --disk-size <sz>   Dimensione del primo disco virtuale throwaway
+                          (default: ${DISK_SIZE}). Con --disks 2 è il
+                          disco "piccolo" atteso per il sistema
+                          (euristica match:{size:smallest} di
+                          iso/storage-dual-disk.yaml).
+      --disk2-size <sz>  Dimensione del secondo disco (solo --disks 2,
+                          default: ${DISK_SIZE_2}). Deve restare diversa
+                          da --disk-size: dischi identici non
+                          eserciterebbero davvero l'euristica
+                          "più piccolo = sistema".
       --disks <1|2>      Numero di dischi virtuali da creare (Fase 2,
                           issue #2): deve corrispondere alla topologia
                           usata per generare l'ISO (--disks di
@@ -59,6 +68,7 @@ while [[ $# -gt 0 ]]; do
     -t|--timeout) TIMEOUT="$2"; shift 2 ;;
     -m|--memory) MEMORY_MB="$2"; shift 2 ;;
     --disk-size) DISK_SIZE="$2"; shift 2 ;;
+    --disk2-size) DISK_SIZE_2="$2"; shift 2 ;;
     --disks)
       [[ "$2" == 1 || "$2" == 2 ]] || err "--disks accetta solo 1 o 2, ricevuto: $2"
       NUM_DISKS="$2"; shift 2 ;;
@@ -77,6 +87,12 @@ for bin in qemu-system-x86_64 qemu-img ssh; do
   command -v "$bin" >/dev/null 2>&1 || err "comando richiesto non trovato: $bin"
 done
 
+if [[ "$NUM_DISKS" == 2 && "$DISK_SIZE" == "$DISK_SIZE_2" ]]; then
+  err "--disk-size e --disk2-size sono uguali (${DISK_SIZE}): la topologia dual-disk" \
+      "assegna il sistema al disco più piccolo (match:{size:smallest}), dischi identici" \
+      "non eserciterebbero davvero l'euristica"
+fi
+
 WORK_DIR="$(mktemp -d)"
 QEMU_PID=""
 cleanup() {
@@ -89,12 +105,14 @@ cleanup() {
 trap cleanup EXIT
 
 DISK_ARGS=()
+DISK_SIZES=("$DISK_SIZE" "$DISK_SIZE_2")
 for ((i = 1; i <= NUM_DISKS; i++)); do
+  SIZE="${DISK_SIZES[$((i - 1))]}"
   DISK="${WORK_DIR}/test-disk-${i}.qcow2"
-  qemu-img create -f qcow2 "$DISK" "$DISK_SIZE" >/dev/null
+  qemu-img create -f qcow2 "$DISK" "$SIZE" >/dev/null
   DISK_ARGS+=(-drive "file=${DISK},if=virtio,format=qcow2")
+  log "Disco virtuale throwaway ${i}/${NUM_DISKS} creato: ${SIZE}"
 done
-log "Dischi virtuali throwaway creati: ${NUM_DISKS} x ${DISK_SIZE}"
 
 KVM_ARGS=(-cpu max)
 if [[ -e /dev/kvm && -r /dev/kvm && -w /dev/kvm ]]; then
@@ -107,7 +125,7 @@ fi
 SERIAL_LOG="${WORK_DIR}/serial.log"
 : > "$SERIAL_LOG"
 
-log "Avvio QEMU (ISO: ${ISO}, RAM: ${MEMORY_MB}MB, disco: ${DISK_SIZE}) ..."
+log "Avvio QEMU (ISO: ${ISO}, RAM: ${MEMORY_MB}MB, dischi: ${NUM_DISKS}) ..."
 qemu-system-x86_64 \
   "${KVM_ARGS[@]}" \
   -m "$MEMORY_MB" -smp 2 \
@@ -178,4 +196,13 @@ if ! "${SSH_CMD[@]}" "$REMOTE_CHECK"; then
   err "Datastore non montato correttamente su ${DATASTORE_LINK} (atteso fstype ${DATASTORE_FILESYSTEM})"
 fi
 
-log "Datastore verificato: ${DATASTORE_LINK} montato come ${DATASTORE_FILESYSTEM}. Test superato."
+log "Datastore verificato: ${DATASTORE_LINK} montato come ${DATASTORE_FILESYSTEM}."
+
+if [[ "$NUM_DISKS" == 2 ]]; then
+  ROOT_SIZE_CHECK="lsblk -bno SIZE \"\$(findmnt -no SOURCE --target /)\" | head -1"
+  ROOT_SIZE_BYTES="$("${SSH_CMD[@]}" "$ROOT_SIZE_CHECK" | tr -d '\r')"
+  log "Dimensione del device root riportata dalla VM: ${ROOT_SIZE_BYTES} byte" \
+      "(disco system atteso: ${DISK_SIZE}, il più piccolo dei due)."
+fi
+
+log "Test superato."
