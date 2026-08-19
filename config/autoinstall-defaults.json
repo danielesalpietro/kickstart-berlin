@@ -20,5 +20,11 @@
       "mount_root": "/grastorp/volumes",
       "symlink_name": "datastore"
     }
+  },
+
+  "network": {
+    "$comment": "Fase 6, issue #6. Range di porte TCP+UDP continuo da aprire su ufw (se attivo) per il traffico container - stesso range d'esempio della guida ufficiale Vast.ai (16384-32768, ~16k porte). La guida raccomanda almeno 3 porte per GPU, 100 per GPU come ideale: il default qui e' gia' ampiamente sufficiente per qualunque configurazione realistica, non serve scalarlo per GPU. Il meccanismo vast.ai di override IP (host_ipaddr) e il file di config del proprio daemon (host_port_range, sotto /var/lib/vastai_kaalia) non hanno un equivalente qui: quel path e' specifico del loro daemon, che non installiamo (Fase 7 e' sostituita dal backend Grastorp) - vedi logbook-fase6.md.",
+    "port_range_start": 16384,
+    "port_range_end": 32768
   }
 }

@@ -5,17 +5,14 @@ boot fino a un host pronto (OS, driver NVIDIA, Docker, rete, benchmark
 hardware). Base derivata dal flusso di setup host di **Vast.ai**, propedeutica
 all'integrazione in [Grastorp](https://github.com/danielesalpietro/grastorp).
 
-> Stato: **early stage**. Fase 1 (ISO autoinstall) completa e validata
-> end-to-end (CI + hardware reale). Fase 2 (partizionamento disco +
-> Datastore) implementata e validata su hardware reale per lo scenario a
-> 2 dischi (install completa senza errori, incluso il mount del
-> Datastore); resta da confermare in modo affidabile il rientro SSH dopo
-> il reboot nell'ambiente di test Hyper-V (probabile problema
-> d'infrastruttura di test, non della logica d'installazione — vedi
-> [`logbook-fase2.md`](logbook-fase2.md)). Fase 3 (storage Docker sul
-> Datastore) implementata, in attesa di boot test reale — vedi
-> [`logbook-fase3.md`](logbook-fase3.md). Le altre fasi sono ancora da
-> fare.
+> Stato: **early stage**. Fasi 1-5 implementate e validate end-to-end su
+> hardware/rete reali (CI, Hyper-V, VM Azure con KVM reale) — vedi
+> [`logbook-fase1.md`](logbook-fase1.md) … [`logbook-fase5.md`](logbook-fase5.md)
+> per il dettaglio di ciascuna. Fase 6 (rete) implementata, in attesa di
+> conferma su host reale — vedi [`logbook-fase6.md`](logbook-fase6.md).
+> Resta sospesa, per tutte le fasi che la richiedono, la conferma finale
+> su hardware fisico con GPU reale (HP Z8 G4, non disponibile fino al
+> 23/08). Le fasi successive sono ancora da fare.
 
 ## Perché
 
@@ -59,7 +56,7 @@ equivalente per un nodo Grastorp.
 | 3 | Preparazione storage | Estensione LVM, rimozione loopback Docker, dati Docker sul filesystem principale | Adattato: nessuna estensione LVM (non prevista dalla guida ufficiale Vast.ai, seguita strettamente — vedi `logbook-fase3.md`), Docker configurato sul Datastore ESX-style con symlink di compatibilità da `/var/lib/docker` | **In corso** ([#3](https://github.com/danielesalpietro/kickstart-berlin/issues/3)) |
 | 4 | Driver NVIDIA + Container Toolkit | Driver pinnato (es. 535) + NVIDIA Container Toolkit da repo ufficiale | Adattato: nessuna versione pinnata (non richiesta dalla guida ufficiale Vast.ai, seguita strettamente — vedi `logbook-fase4.md`), driver auto-rilevato via `ubuntu-drivers autoinstall` | **In corso** ([#4](https://github.com/danielesalpietro/kickstart-berlin/issues/4)) |
 | 5 | Docker | Install da `get.docker.com`, config con runtime NVIDIA | Identico | **In corso** ([#5](https://github.com/danielesalpietro/kickstart-berlin/issues/5)) |
-| 6 | Rete | DHCP via Netplan, DNS pubblici, hostname | Identico, propedeutico al rilevamento NIC di Grastorp ([grastorp#11](https://github.com/danielesalpietro/grastorp/issues/11)) | Da fare |
+| 6 | Rete | DHCP via Netplan, DNS pubblici, hostname | Identico, propedeutico al rilevamento NIC di Grastorp ([grastorp#11](https://github.com/danielesalpietro/grastorp/issues/11)); range di porte TCP+UDP aperto su ufw se attivo (guida ufficiale Vast.ai) | **In corso** ([#6](https://github.com/danielesalpietro/kickstart-berlin/issues/6)) |
 | 7 | Installazione daemon del provider | Wizard ufficiale Vast.ai (Kaalia daemon) + API key utente | **Sostituito**: qui va installato il backend/agent Grastorp stesso (Docker Compose), non un daemon di terzi | Da fare |
 | 8 | Raccolta info hardware | `dmidecode` + permessi sudo dedicati, usato per popolare il "machine info" del marketplace | **Riusato as-is**: stesso meccanismo alla base del node profiling di Grastorp ([grastorp#14](https://github.com/danielesalpietro/grastorp/issues/14)) | Da fare |
 | 9 | Manutenzione | Timer systemd per pulizia oraria container/immagini inutilizzati | Riusabile as-is | Da fare |
@@ -215,12 +212,31 @@ equivalente per un nodo Grastorp.
   differenza di Fase 3/4): la guida Vast.ai non descrive comandi
   espliciti per questo passaggio (nascosto nel proprio installer
   proprietario), quindi si segue la pratica standard Docker.
-- **Limite noto**: `get.docker.com` è bloccato dalla policy di rete del
-  sandbox di sviluppo (stessa restrizione già vista per `docs.vast.ai` e
-  `nvidia.github.io`) — l'installazione Docker vera non è stata testata
-  qui, così come l'interazione tra `nvidia-ctk runtime configure` e il
-  `data-root` già scritto da Fase 3 in `daemon.json`. Vedi
-  [`logbook-fase5.md`](logbook-fase5.md).
+- **Verificato su rete diretta** (VM Azure, dove `get.docker.com` e
+  `nvidia.github.io` non sono bloccati come nel sandbox di sviluppo):
+  installazione Docker reale riuscita, e confermato che
+  `nvidia-ctk runtime configure` fa un merge pulito in `daemon.json`
+  senza perdere il `data-root` già scritto da Fase 3 — unico punto di
+  interazione tra fasi rimasto da confermare, ora chiuso. Resta sospesa
+  solo la verifica `docker run --gpus all` su GPU reale (Z8, dal 23/08).
+  Vedi [`logbook-fase5.md`](logbook-fase5.md).
+
+## Fase 6 — rete
+
+- `postinstall/setup.sh` — nuova `phase6_network()`: apre il range di
+  porte TCP+UDP richiesto (guida ufficiale Vast.ai, "Port Requirements":
+  almeno 3 porte per GPU) su `ufw`, ma solo se `ufw` è già installato E
+  già attivo — non lo installa né lo abilita, non tocca la postura
+  firewall esistente dell'host. Range configurabile via
+  `config/autoinstall-defaults.json`/`--port-range` di `build-iso.sh`.
+- **Scope deliberatamente limitato**: DHCP è già il default Ubuntu
+  Server, l'hostname univoco è già gestito in Fase 3. Il meccanismo
+  vast.ai-specifico di config del proprio daemon
+  (`/var/lib/vastai_kaalia/host_port_range`) non ha un equivalente qui
+  (quel daemon non è installato — Fase 7 lo sostituisce col backend
+  Grastorp, non ancora implementato); l'override IP non ha un requisito
+  Grastorp concreto ad oggi; il test di velocità appartiene a Fase 11,
+  non qui. Dettaglio in [`logbook-fase6.md`](logbook-fase6.md).
 
 ## Riferimenti
 
