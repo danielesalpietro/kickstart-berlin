@@ -106,16 +106,16 @@ template post-install).
 
 - [ ] Idempotenza (rieseguire lo script su un sistema già esteso non
       causa errori) — logica scritta per esserlo (controlli di stato
-      prima di ogni azione), da confermare con un test reale che invochi
-      lo script due volte.
+      prima di ogni azione), ancora da confermare invocando lo script
+      una seconda volta a mano sull'host installato.
 - [ ] Docker su storage driver reale (`overlay2`), non loopback — non
       verificabile fino alla Fase 5 (installazione Docker stesso); per
       ora verificato che `data-root` sia configurato correttamente
       *prima* che Docker esista.
-- [ ] Spazio disco coerente con la partizione dati di Fase 2 — atteso
-      per costruzione (stesso mountpoint), da confermare con un boot
-      test reale.
-- [ ] Nessuna estensione LVM prevista per questa fase (decisione sopra).
+- [x] Spazio disco coerente con la partizione dati di Fase 2 — **confermato
+      con un boot test reale** (vedi sotto): `/var/lib/docker` risolve
+      correttamente dentro `/grastorp/volumes/datastore`.
+- [x] Nessuna estensione LVM prevista per questa fase (decisione sopra).
 
 ## 2026-08-19 — Flag dev-only per saltare l'attesa rete di "updates: security"
 
@@ -220,15 +220,36 @@ in parallelo a questa sessione sandbox durante le Fasi 2-3. Impatto:
   conferma, in particolare per modifiche che toccano boot/partizionamento
   (area dove il bug UEFI reale è già stato trovato una volta).
 
+## 2026-08-19 — Primo run end-to-end riuscito in sandbox (dopo il fix grub_device + flag dev)
+
+Con il fix `grub_device` solo-UEFI (`logbook-fase2.md`) e
+`--dev-skip-security-updates`, un boot test single-disk completo in
+sandbox (OVMF, nessun KVM) va a buon fine per la prima volta dall'inizio
+alla fine, senza alcun intervento manuale:
+
+- `install-grub`: nessun errore (prima falliva sempre in BIOS legacy).
+- `run_unattended_upgrades`: ~120s invece di ~40 minuti (prima andava
+  sempre in timeout).
+- Login SSH riuscito con la chiave iniettata a build-time.
+- Datastore Grastorp montato correttamente (Fase 2): `/grastorp/volumes/
+  datastore` come XFS.
+- Post-install Fase 3 verificato: `/var/lib/docker` risolve a
+  `/grastorp/volumes/datastore/docker`, `daemon.json` coerente.
+- Tempo totale: ~50 minuti (contro un timeout di 75 minuti raggiunto e
+  superato nei run precedenti senza questi due fix) — margine reale per
+  la prima volta, non solo "quasi ce la fa".
+
+`--dev-skip-security-updates` aggiunto anche al job di integrazione CI
+(`ci.yml`): la build di produzione resta invariata (update reali,
+default), CI/sviluppo usano il flag per non sprecare ~40 minuti a run
+senza validare nulla di nuovo sulla nostra logica.
+
 ## Prossimi passi
 
-- [ ] Boot test reale (sandbox o hardware) per confermare che il
-      servizio post-install completi al primo boot e che
-      `/var/lib/docker`/`daemon.json` risultino corretti.
 - [ ] Verificare l'idempotenza invocando `postinstall/setup.sh` una
       seconda volta a mano sull'host installato.
-- [ ] Confermare che `--dev-skip-security-updates` non comprometta il
-      resto dell'autoinstall (test in corso).
-- [ ] Aprire la PR quando confermato (sandbox); rimane comunque in sospeso
-      la conferma su hardware reale, non disponibile fino al 23/08 (vedi
-      sopra).
+- [ ] Ripetere la stessa conferma end-to-end anche per la topologia
+      dual-disk (finora verificata solo per single-disk in questo run).
+- [ ] Aprire la PR quando confermato anche per dual-disk; rimane
+      comunque in sospeso la conferma su hardware reale, non disponibile
+      fino al 23/08 (vedi sopra).

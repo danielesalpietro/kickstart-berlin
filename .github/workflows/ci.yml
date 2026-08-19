@@ -79,10 +79,19 @@ jobs:
           # da 20G di boot-test-qemu.sh. Rilevante solo per la topologia
           # single (--disks 1): con "dual" il root usa l'intero disco
           # dedicato (size:-1), il flag viene ignorato senza effetto.
+          #
+          # --dev-skip-security-updates: SOLO qui (CI/test), MAI nel default
+          # di produzione. "updates: security" funziona correttamente dato
+          # abbastanza tempo (confermato in sandbox, vedi logbook-fase3.md),
+          # ma rifare il download/verifica update di sicurezza ad ogni run
+          # CI sprecherebbe ~40 minuti a run senza validare nulla di nuovo
+          # sulla nostra logica - qui si verifica l'autoinstall, non la
+          # freshness delle patch di sicurezza Ubuntu.
           scripts/build-iso.sh \
             -k "${{ runner.temp }}/test_key.pub" \
             --disks "${{ matrix.disks }}" \
             --system-size 10G \
+            --dev-skip-security-updates \
             -o "${{ runner.temp }}/kickstart-berlin-test.iso"
 
       - name: Boot ISO in QEMU, verifica autoinstall + login SSH + Datastore
