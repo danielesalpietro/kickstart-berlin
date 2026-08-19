@@ -487,8 +487,11 @@ Corretto in questa stessa sessione: stderr di QEMU ora va su file
 (`${WORK_DIR}/qemu-stderr.log`), e sia quello sia il log seriale vengono
 persistiti accanto all'ISO su *qualunque* percorso di uscita anomala.
 
-**Da fare**: ri-eseguire il boot test Fase 2/3 in sandbox con OVMF per
-confermare che il fix risolve davvero il problema (non solo sulla carta)
-prima di considerare la PR #17 pronta per il merge; la conferma finale
-su hardware reale resta comunque sospesa fino al ritorno della Z8
-(23/08).
+**Confermato**: ri-eseguito il boot test single-disk in sandbox con
+OVMF. `install-grub` completa questa volta senza errori (prima falliva
+sempre a questo punto) e l'installazione prosegue regolarmente fino a
+`run_unattended_upgrades` (dove va comunque in timeout per il limite di
+rete/velocità già noto del sandbox sotto TCG, non un fallimento — vedi
+`logbook-fase3.md` per il flag `--dev-skip-security-updates` pensato
+proprio per questo). Il fix risolve il problema. Resta comunque sospesa
+la conferma finale su hardware reale fino al ritorno della Z8 (23/08).
