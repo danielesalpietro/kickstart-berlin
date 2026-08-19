@@ -285,14 +285,22 @@ xorriso -abort_on FAILURE \
   -volid "$VOLID" \
   >/dev/null
 
-# Controllo difensivo aggiuntivo, indipendente dall'exit code di xorriso:
-# l'ISO risultante deve esistere ed essere di dimensione plausibile (non
-# più piccola dell'ISO sorgente, dato che aggiunge solo file).
+# Controllo difensivo aggiuntivo, indipendente dall'exit code del comando
+# xorriso sopra: verifica che l'ISO risultante esista e contenga
+# effettivamente i file appena iniettati. Una prima versione di questo
+# controllo confrontava la dimensione totale con l'ISO sorgente
+# (mai più piccola, dato che si aggiungono solo file) - si è rivelato un
+# falso positivo: il meccanismo di "replay" del boot catalog di xorriso
+# può produrre un output di qualche centinaio di KB più piccolo per
+# differenze di allineamento/padding, pur essendo perfettamente valido
+# (confermato con boot test reali riusciti). Verificare la presenza
+# effettiva dei file iniettati è il controllo corretto, non la dimensione
+# totale.
 [[ -s "$OUTPUT_ISO" ]] || err "ISO non generata: ${OUTPUT_ISO} mancante o vuota dopo xorriso"
-SOURCE_ISO_SIZE="$(stat -c%s "$SOURCE_ISO")"
-OUTPUT_ISO_SIZE="$(stat -c%s "$OUTPUT_ISO")"
-(( OUTPUT_ISO_SIZE >= SOURCE_ISO_SIZE )) \
-  || err "ISO generata (${OUTPUT_ISO_SIZE} byte) più piccola dell'ISO sorgente (${SOURCE_ISO_SIZE} byte): probabile scrittura incompleta"
+for injected_path in /server/user-data /server/meta-data; do
+  xorriso -abort_on FAILURE -indev "$OUTPUT_ISO" -find "$injected_path" >/dev/null 2>&1 \
+    || err "ISO generata ma ${injected_path} non trovato al suo interno: probabile scrittura incompleta"
+done
 
 log "ISO generata: ${OUTPUT_ISO}"
 sha256sum "$OUTPUT_ISO" | tee "${OUTPUT_ISO}.sha256"
