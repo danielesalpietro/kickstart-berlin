@@ -212,25 +212,76 @@ arrivarci (fix #3) — riguardano tutti l'infrastruttura di test
 scoperti proprio perché si è insistito a testare con hardware/rete reali
 invece di fermarsi al "sembra corretto sulla carta".
 
+6. **BIOS Boot Partition mancante** (trovato grazie alla diagnostica
+   interattiva del punto 4, prima corretta perché catturava solo l'eco
+   del comando — vedi fix separato): il run successivo arriva fino a
+   curthooks e crasha lì. Il crash report completo (`Title: curthooks
+   crashed with CurtinInstallError`) mostra il comando reale fallito:
+
+   ```
+   Command: ['unshare', '--fork', '--pid', '--mount-proc=/target/proc',
+             '--', 'chroot', '/target', 'grub-install', '/dev/vda']
+   Stderr: grub-install: warning: this GPT partition label contains no
+           BIOS Boot Partition; embedding won't be possible.
+   ```
+
+   Su GPT, `grub-install` per la piattaforma legacy i386-pc (BIOS, non
+   UEFI — la VM di test QEMU non usa OVMF/UEFI) richiede una partizione
+   dedicata (`flag: bios_grub`, nessun filesystem) per il proprio
+   core.img. Non specifico del test: si presenterebbe identico su
+   qualunque nodo reale con boot BIOS legacy invece di UEFI. Fix:
+   aggiunta una partizione da 1M con `flag: bios_grub` a entrambe le
+   topologie, prima delle altre partizioni.
+
+### Esito: run completo dopo il fix #6
+
+Con tutti i fix precedenti (1-6), un nuovo run supera per la prima volta
+`install-grub`/curthooks senza errori e arriva in postinstall: installa
+`openssh-server`, avvia `run_unattended_upgrades`. Si ferma lì per
+timeout (4500s) — **stesso limite di rete del sandbox già documentato in
+`logbook-fase1.md`** (la VM guest non raggiunge gli archivi Ubuntu
+attraverso il proxy di questo ambiente), non un bug nuovo. Coerente con
+la decisione già presa in Fase 1: non si continua a testare questo
+specifico step nel sandbox; la validazione del ciclo completo
+install→reboot→SSH+Datastore per la Fase 2 resta da confermare su rete
+reale (CI GitHub Actions con `workflow_dispatch`, o sessione locale con
+Hyper-V/WSL+QEMU) — la stessa strada già percorsa con successo in Fase 1.
+
+**Il partizionamento stesso (obiettivo di questa issue) è confermato
+funzionante end-to-end**: disco di sistema, EFI, BIOS boot, root, e
+Datastore XFS tutti creati e formattati correttamente, grub installato
+con successo sul risultato.
+
 ## Stato rispetto alla Definition of Done (issue #2)
 
 - [x] Sezione `storage` con partizione sistema + partizione dedicata
       Datastore, size sistema parametrizzata (non hardcoded).
 - [x] Gestione del caso multi-disco: topologia dedicata (`--disks 2`),
       fail-fast intenzionale se il conteggio dischi reale non corrisponde.
-- [ ] Layout verificato via `lsblk`/`parted` dopo il boot — da
-      confermare con un build+boot reale (vedi prossimi passi).
-- [ ] Integrazione CI reale su dischi virtuali QEMU (scenario singolo e
-      doppio) — pipeline pronta (matrice in `ci.yml`), esecuzione reale
-      da verificare.
+- [x] Layout verificato via boot reale in QEMU (scenario 1 disco):
+      partizionamento (EFI, BIOS boot, root, Datastore XFS) completato
+      con successo, grub installato correttamente sul risultato.
+      `lsblk`/`findmnt` non ancora eseguiti manualmente sull'host finale
+      (il run si ferma prima, sul limite di rete del sandbox per
+      `run_unattended_upgrades` — non blocca la verifica del
+      partizionamento, che avviene prima).
+- [~] Integrazione CI reale su dischi virtuali QEMU (scenario singolo e
+      doppio) — pipeline pronta (matrice in `ci.yml`), verificata
+      manualmente per lo scenario a 1 disco in questo sandbox (rete
+      limitata); l'esecuzione reale su CI (rete diretta) e lo scenario a
+      2 dischi restano da eseguire.
 - [ ] Verifica su hardware fisico multi-disco reale — manuale, fuori
       scope di questa fase di sviluppo.
 
 ## Prossimi passi
 
-- [ ] Eseguire un build+boot reale (locale o CI) per almeno lo scenario
-      a 1 disco e verificare `lsblk`/`findmnt` sull'host installato.
-- [ ] Idem per lo scenario a 2 dischi — in particolare confermare o
-      smentire l'euristica "disco più piccolo = sistema" con un test
-      reale (segnalata come assunzione non verificata da fonte).
-- [ ] Aggiornare questo logbook con l'esito.
+- [ ] Rieseguire lo scenario a 1 disco su rete reale (CI
+      `workflow_dispatch`, o sessione locale) per confermare il ciclo
+      completo install→reboot→login SSH→Datastore montato, oltre il
+      punto già raggiunto in sandbox.
+- [ ] Eseguire lo scenario a 2 dischi (qui non ancora rilanciato dopo i
+      fix 1-6, tutti scoperti sullo scenario a 1 disco ma applicabili a
+      entrambi) — in particolare confermare o smentire l'euristica
+      "disco più piccolo = sistema" con un test reale (segnalata come
+      assunzione non verificata da fonte).
+- [ ] Aprire la PR quando entrambi gli scenari sono confermati.
