@@ -51,10 +51,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Installa dipendenze (xorriso, QEMU/KVM)
+      - name: Installa dipendenze (xorriso, QEMU/KVM, firmware UEFI)
         run: |
+          # ovmf: solo UEFI dal 2026-08-19 (vedi logbook-fase2.md) —
+          # boot-test-qemu.sh richiede OVMF esplicitamente, niente
+          # fallback silenzioso su BIOS legacy (che con lo storage.config
+          # attuale fallisce sempre: grub_device solo sulla ESP).
           sudo apt-get update -qq
-          sudo apt-get install -y -qq xorriso qemu-system-x86 qemu-utils
+          sudo apt-get install -y -qq xorriso qemu-system-x86 qemu-utils ovmf
 
       - name: Abilita accesso KVM al runner
         run: |

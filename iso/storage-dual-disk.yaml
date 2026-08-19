@@ -20,21 +20,14 @@
           size: smallest
         ptable: gpt
         wipe: superblock
-        grub_device: true
 
-      # Partizione BIOS Boot: vedi storage-single-disk.yaml per il
-      # dettaglio del problema (grub-install i386-pc fallisce su GPT
-      # senza, in boot non-UEFI).
-      - type: partition
-        id: bios-boot-partition
-        device: system-disk
-        size: 1M
-        flag: bios_grub
-
-      # "grub_device: true" qui: vedi storage-single-disk.yaml per il
-      # dettaglio (necessario su UEFI, senza Subiquity rifiuta l'intera
-      # config con "autoinstall config did not create needed bootloader
-      # partition").
+      # Solo UEFI (decisione 2026-08-19): vedi storage-single-disk.yaml
+      # per il dettaglio completo — niente partizione BIOS Boot,
+      # "grub_device: true" solo sulla ESP sotto (necessario su UEFI,
+      # senza Subiquity rifiuta l'intera config con "autoinstall config
+      # did not create needed bootloader partition"; averlo anche sul
+      # disco rompeva il boot BIOS legacy per un comportamento di curtin
+      # che non filtra i target grub in base al firmware reale).
       - type: partition
         id: efi-partition
         device: system-disk

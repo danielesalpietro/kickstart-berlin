@@ -124,6 +124,41 @@ else
   log "ATTENZIONE: /dev/kvm non disponibile, uso emulazione software (TCG, molto più lenta)."
 fi
 
+# Firmware UEFI obbligatorio (OVMF), non piu' opzionale: iso/storage-*-disk.yaml
+# supporta solo UEFI dal 2026-08-19 (decisione: "grub_device: true" sia sul
+# disco che sulla ESP mandava in errore l'intero autoinstall in boot BIOS
+# legacy - curtin invoca grub-install su ogni device con quel flag senza
+# filtrare per firmware reale - vedi logbook-fase2.md). Un test in BIOS
+# legacy (default QEMU senza firmware esplicito) fallirebbe sempre con
+# l'ISO attuale: niente fallback silenzioso, si richiede OVMF esplicitamente.
+OVMF_CODE=""
+OVMF_VARS_TEMPLATE=""
+for candidate_dir in /usr/share/OVMF /usr/share/ovmf /usr/share/qemu; do
+  for code_name in OVMF_CODE_4M.fd OVMF_CODE.fd OVMF.fd; do
+    if [[ -f "${candidate_dir}/${code_name}" ]]; then
+      OVMF_CODE="${candidate_dir}/${code_name}"
+      break 2
+    fi
+  done
+done
+for candidate_dir in /usr/share/OVMF /usr/share/ovmf /usr/share/qemu; do
+  for vars_name in OVMF_VARS_4M.fd OVMF_VARS.fd; do
+    if [[ -f "${candidate_dir}/${vars_name}" ]]; then
+      OVMF_VARS_TEMPLATE="${candidate_dir}/${vars_name}"
+      break 2
+    fi
+  done
+done
+[[ -n "$OVMF_CODE" && -n "$OVMF_VARS_TEMPLATE" ]] \
+  || err "firmware UEFI (OVMF) non trovato: richiesto per testare l'ISO (solo UEFI dal 2026-08-19, vedi logbook-fase2.md). Installa il pacchetto 'ovmf'."
+OVMF_VARS="${WORK_DIR}/OVMF_VARS.fd"
+cp "$OVMF_VARS_TEMPLATE" "$OVMF_VARS"
+UEFI_ARGS=(
+  -drive "if=pflash,format=raw,readonly=on,file=${OVMF_CODE}"
+  -drive "if=pflash,format=raw,file=${OVMF_VARS}"
+)
+log "Firmware UEFI: ${OVMF_CODE}"
+
 SERIAL_LOG="${WORK_DIR}/serial.log"
 SERIAL_SOCK="${WORK_DIR}/serial.sock"
 QEMU_STDERR_LOG="${WORK_DIR}/qemu-stderr.log"
@@ -138,6 +173,7 @@ log "Avvio QEMU (ISO: ${ISO}, RAM: ${MEMORY_MB}MB, dischi: ${NUM_DISKS}) ..."
 # reale di un errore.
 qemu-system-x86_64 \
   "${KVM_ARGS[@]}" \
+  "${UEFI_ARGS[@]}" \
   -m "$MEMORY_MB" -smp 2 \
   -machine q35 \
   -display none -nographic -monitor none \

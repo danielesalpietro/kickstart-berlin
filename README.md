@@ -131,11 +131,18 @@ equivalente per un nodo Grastorp.
 - `scripts/validate-autoinstall.py` valida anche la struttura di
   `iso/storage-*-disk.yaml` (azioni con riferimenti `device`/`volume`
   coerenti, fstype, `swap.size: 0`).
-- Boot **UEFI** (es. Hyper-V Gen2, e la gran parte dell'hardware server
-  moderno): entrambe le topologie impostano `grub_device: true` sulla
-  partizione ESP oltre che sul disco — senza, Subiquity rifiuta l'intera
-  installazione con "autoinstall config did not create needed bootloader
-  partition" (mai emerso nei primi test, tutti su boot BIOS legacy).
+- Boot **solo UEFI** (es. Hyper-V Gen2, e la gran parte dell'hardware
+  server moderno) — decisione 2026-08-19: entrambe le topologie impostano
+  `grub_device: true` sulla partizione ESP; senza, Subiquity rifiuta
+  l'intera installazione con "autoinstall config did not create needed
+  bootloader partition" (mai emerso nei primi test, tutti su boot BIOS
+  legacy). Il legacy BIOS non è supportato: avere `grub_device: true`
+  anche sul disco (necessario per BIOS) faceva sì che curtin tentasse
+  `grub-install` pure sulla ESP FAT32 in un boot BIOS, fallendo sempre
+  ("File system 'fat' doesn't support embedding") — vedi
+  [`logbook-fase2.md`](logbook-fase2.md). `scripts/boot-test-qemu.sh`
+  richiede quindi firmware OVMF (pacchetto `ovmf`), niente fallback su
+  BIOS legacy.
 - Validato su hardware reale (HP Z8 G4, VM Hyper-V Gen2): installazione
   a 2 dischi completa senza errori (partizionamento, grub, Datastore
   montato via late-commands); il rientro SSH dopo il reboot non è ancora
