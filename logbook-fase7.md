@@ -102,14 +102,47 @@ account host reale e loggato — non è qualcosa che si possa simulare o
 precostruire. Da testare quando l'utente fornirà un comando reale
 copiato dal portale, sulla VM Azure o sulla Z8.
 
+## 2026-08-20 — Percorsi sintetici confermati su host reale (VM Azure)
+
+Nessuna dipendenza di rete/account in questi percorsi (lo script non
+contatta mai la rete da solo), quindi rieseguibili identici fuori dal
+sandbox — su VM-TEST2, con lo script vero (non uno stub):
+
+1. `--command-file` mancante → `usage` + errore chiaro, exit 1.
+2. File non trovato → errore chiaro, exit 1.
+3. File vuoto → errore chiaro, exit 1, **e il file viene comunque
+   distrutto** (la `shred -u`/fallback `rm -f` avviene prima del
+   controllo di vuotezza nel codice — confermato che è così anche nella
+   pratica, non solo leggendo la sorgente).
+4. Eseguito senza `sudo` → controllo `EUID -eq 0` blocca correttamente
+   con errore chiaro, exit 1.
+5. Percorso felice con un comando finto (`echo "..."; hostname`):
+   eseguito con successo (exit 0), il comando reale non è mai stampato
+   nei log (solo un messaggio generico), e il file col comando è
+   **confermato distrutto** dopo l'uso (`ls` → "No such file").
+
+Nessun bug trovato: comportamento identico a quanto già validato in
+sandbox con lo stub, ora confermato con il binario/ambiente reale.
+
+**Resta non testabile senza un comando reale** (per costruzione, non un
+limite temporaneo): l'installazione effettiva del daemon Vast.ai
+richiede un comando account-specifico copiato da
+`cloud.vast.ai/host/setup` (valido 1 ora) — va fornito dall'utente
+quando pronto a testare il listing reale.
+
 ## Prossimi passi
 
+- [x] Verificare i percorsi sintetici (validazione argomenti,
+      distruzione del file) su un host reale, non solo nel sandbox con
+      stub — **confermato sopra**.
 - [ ] Testare con un comando reale copiato da `cloud.vast.ai/host/setup`
       su un host con rete diretta (VM Azure) — confermare che l'intero
       stack costruito finora (Datastore ESX-style, Docker, driver
       NVIDIA se disponibile, rete) sia davvero riconosciuto come
-      compliant dall'installer/daemon Vast.ai.
+      compliant dall'installer/daemon Vast.ai. Richiede che l'utente
+      generi e fornisca il comando (identità account, valido 1 ora).
 - [ ] Se l'host viene listato con successo: Fase 10 (CLI `vastai` +
       self-test) e Fase 13 (listing) tornano ad avere un `machine_id`
       reale su cui operare — riprenderle a quel punto.
-- [ ] Aprire la PR quando confermato con un comando reale.
+- [ ] Aprire la PR quando confermato con un comando reale (i percorsi
+      sintetici sono già pienamente confermati e non bloccano la PR).
