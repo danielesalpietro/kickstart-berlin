@@ -163,7 +163,7 @@ autoinstall:
       'set -e;
       mkdir -p /target/opt/kickstart-berlin;
       cp -r /cdrom/postinstall/. /target/opt/kickstart-berlin/;
-      chmod +x /target/opt/kickstart-berlin/setup.sh;
+      chmod +x /target/opt/kickstart-berlin/*.sh;
       mkdir -p /target/etc/systemd/system;
       cp /target/opt/kickstart-berlin/kickstart-berlin-postinstall.service /target/etc/systemd/system/kickstart-berlin-postinstall.service;
       systemctl enable --root=/target kickstart-berlin-postinstall.service'
