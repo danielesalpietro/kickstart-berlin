@@ -14,6 +14,8 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+
 ISO=""
 SSH_PRIVATE_KEY=""
 TIMEOUT="${TIMEOUT:-3600}"
@@ -123,14 +125,23 @@ else
 fi
 
 SERIAL_LOG="${WORK_DIR}/serial.log"
+SERIAL_SOCK="${WORK_DIR}/serial.sock"
 : > "$SERIAL_LOG"
 
 log "Avvio QEMU (ISO: ${ISO}, RAM: ${MEMORY_MB}MB, dischi: ${NUM_DISKS}) ..."
+# La console seriale è un chardev "socket" (non "file" diretto): "logfile"
+# mantiene lo stesso log testuale continuo di prima, ma il socket permette
+# anche, su fallimento, di collegarsi e inviare comandi diagnostici alla
+# shell di recovery di Subiquity (vedi scripts/_qemu_serial_diag.py) — la
+# sola trace ad alto livello sulla console non include mai il traceback
+# reale di un errore.
 qemu-system-x86_64 \
   "${KVM_ARGS[@]}" \
   -m "$MEMORY_MB" -smp 2 \
   -machine q35 \
-  -display none -nographic -serial "file:${SERIAL_LOG}" -monitor none \
+  -display none -nographic -monitor none \
+  -chardev "socket,id=serial0,path=${SERIAL_SOCK},server=on,wait=off,logfile=${SERIAL_LOG}" \
+  -serial chardev:serial0 \
   -boot once=d \
   -cdrom "$ISO" \
   "${DISK_ARGS[@]}" \
@@ -168,6 +179,25 @@ while true; do
 done
 
 if [[ "$SSH_OK" != "1" ]]; then
+  # Subiquity caduto nella shell di recovery del live environment: la sola
+  # trace ad alto livello (start/finish) sulla console non include mai il
+  # traceback reale. Best-effort: collegati al socket seriale e prova a
+  # leggere il crash report + la coda del log di Subiquity prima di
+  # arrenderti (vedi scripts/_qemu_serial_diag.py). Se QEMU è già morto o
+  # non è quello stato (es. timeout puro senza crash) semplicemente non
+  # produce nulla di utile, ignorato.
+  if grep -q "An error occurred. Press enter to start a shell" "$SERIAL_LOG" 2>/dev/null \
+      && kill -0 "$QEMU_PID" 2>/dev/null; then
+    log "Rilevata shell di recovery: provo a leggere crash report + log Subiquity ..."
+    DIAG_OUT="${ISO}.crash-diag.txt"
+    if python3 "${SCRIPT_DIR}/_qemu_serial_diag.py" "$SERIAL_SOCK" "$DIAG_OUT" 2>/dev/null \
+        && [[ -s "$DIAG_OUT" ]]; then
+      log "Diagnostica extra salvata in: ${DIAG_OUT}"
+    else
+      log "Diagnostica extra non disponibile (best-effort, nessun blocco)."
+    fi
+  fi
+
   # WORK_DIR (e quindi SERIAL_LOG) viene rimosso dal trap di cleanup a fine
   # script: salva il log seriale completo accanto all'ISO prima che sparisca,
   # altrimenti l'unica diagnostica disponibile sarebbe la tail qui sotto
