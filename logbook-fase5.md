@@ -64,15 +64,54 @@ della sequenza in `main()` dopo `phase3_docker_storage()` e
   funzionante (Fase 4, bloccata dallo stesso limite di rete) sia una GPU
   reale per un test end-to-end pienamente rappresentativo.
 
+## 2026-08-19/20 — Verificato su rete diretta (VM Azure): Docker + merge runtime NVIDIA, nessuna perdita di data-root
+
+Stesso ambiente delle verifiche Fase 4 (VM-TEST2, Azure, rete diretta).
+Eseguiti a mano, nell'ordine esatto di `main()` (Fase 3 → 4 → 5), i
+comandi reali di `phase5_docker()` e ricreato lo scenario critico
+segnalato come non verificabile: `daemon.json` che contiene già
+`data-root` (scritto da `phase3_docker_storage()` prima che Docker
+esista) quando `nvidia-ctk runtime configure` interviene.
+
+1. Simulato l'output di Fase 3: `/etc/docker/daemon.json` con solo
+   `{"data-root": "/tmp/fake-datastore/docker"}` (stesso formato esatto
+   prodotto dal merge JSON di `phase3_docker_storage()`).
+2. `curl https://get.docker.com | sh` (comando reale di
+   `phase5_docker()`): **riuscito**, nessun errore — solo il blocco di
+   rete del sandbox impediva questo test prima. `systemctl enable --now
+   docker` OK, Docker si avvia rispettando già il `data-root` custom
+   (`docker info` → `Docker Root Dir: /tmp/fake-datastore/docker`).
+3. Reinstallato NVIDIA Container Toolkit (stessi comandi già verificati
+   in Fase 4).
+4. `nvidia-ctk runtime configure --runtime=docker`: **merge pulito
+   confermato** — `daemon.json` dopo il comando contiene sia `data-root`
+   (invariato) sia la nuova chiave `runtimes.nvidia`, nessuna perdita di
+   dati. Era l'unico punto di interazione tra fasi non ancora confermato.
+5. `systemctl restart docker` dopo la riconfigurazione: pulito, Docker
+   riparte con `Docker Root Dir` ancora corretto e il runtime `nvidia`
+   elencato tra quelli disponibili.
+6. `docker run --rm hello-world`: eseguito con successo, conferma che
+   l'intero stack (data-root custom + runtime nvidia registrato) è
+   pienamente funzionante, non solo "il file JSON sembra corretto".
+
+**Nessun bug trovato, nessuna modifica necessaria a `postinstall/
+setup.sh`**: sia l'installazione Docker sia l'interazione col merge del
+runtime NVIDIA funzionano esattamente come progettato. Pulizia completa
+dell'host di test dopo la verifica (Docker, Container Toolkit, file di
+config e directory di prova tutti rimossi).
+
+**Resta non verificabile qui** (nessuna GPU su questa VM): `docker run
+--gpus all ...` che veda davvero una GPU — richiede hardware NVIDIA
+reale (Z8, dal 23/08, o istanza GPU cloud dedicata).
+
 ## Prossimi passi
 
-- [ ] Testare su un host con rete diretta (VM Azure) l'installazione
-      Docker vera (`get.docker.com`) e, se anche il Container Toolkit di
-      Fase 4 risulta installabile lì, la config del runtime NVIDIA e
-      l'interazione con `daemon.json`/`data-root` di Fase 3.
-- [ ] Confermare `docker run --rm --gpus all ...` (o equivalente) vede
-      davvero la GPU — richiede hardware NVIDIA reale (Z8 o istanza GPU
-      cloud dedicata), stesso limite già documentato per Fase 4.
-- [ ] Aprire la PR quando: installazione Docker verificata su rete
-      diretta; idealmente (non bloccante) confermato l'intero percorso
-      Docker+GPU su hardware reale.
+- [x] Testare su un host con rete diretta (VM Azure) l'installazione
+      Docker vera e la config del runtime NVIDIA — **confermato sopra**,
+      incluso il punto critico data-root/merge JSON.
+- [ ] Confermare `docker run --rm --gpus all ...` vede davvero la GPU —
+      richiede hardware NVIDIA reale (Z8 o istanza GPU cloud dedicata),
+      stesso limite già documentato per Fase 4.
+- [ ] Aprire la PR quando confermato il percorso driver+GPU reale su
+      hardware fisico (unico punto ancora aperto; Docker/runtime su rete
+      diretta ora confermati per Fase 4 e Fase 5).
