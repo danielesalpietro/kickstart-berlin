@@ -101,6 +101,22 @@ autoinstall:
       echo "$NEW_HOSTNAME" > /etc/hostname;
       sed -i "s/^127\.0\.1\.1.*/127.0.1.1\t$NEW_HOSTNAME/" /etc/hosts'
 
+    # Hardening: disabilita esplicitamente il rilevamento multi-cloud di
+    # cloud-init sul target (Subiquity lo disattiva gia' di default via
+    # marker file dopo l'install, ma senza questa chiave esplicita
+    # resterebbe comunque configurato con la lista datasource di default
+    # se mai riabilitato/rieseguito). Un nodo GPU bare-metal Vast.ai/
+    # Grastorp non ha alcun bisogno del rilevamento automatico di
+    # datasource cloud (Azure/EC2/GCE/...): elimina un'intera classe di
+    # rischio ("qualche servizio di metadata diventa raggiungibile per
+    # sbaglio e sovrascrive hostname/chiavi/rete", sospettato ma non
+    # confermato come causa di un'anomalia hostname osservata durante lo
+    # sviluppo, vedi logbook-fase3.md).
+    - >-
+      curtin in-target --target=/target -- sh -c
+      'mkdir -p /etc/cloud/cloud.cfg.d;
+      echo "datasource_list: [None]" > /etc/cloud/cloud.cfg.d/99-disable-datasource.cfg'
+
     # L'account admin ha la password bloccata (vedi identity.password
     # sopra) e l'unico accesso e' via chiave SSH: richiedere ANCHE una
     # password per sudo lo renderebbe di fatto inutilizzabile (nessuna

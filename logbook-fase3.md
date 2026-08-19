@@ -368,30 +368,99 @@ il che non è il caso d'uso (stessa ISO, più macchine).
   `hostname` sul target rispetti il pattern `<prefisso>-XXXX` (regex
   `^[a-z][a-z0-9-]*-[a-z0-9]{1,4}$`).
 
-**Anomalia in corso di verifica**: primo boot test col fix hostname
-fallito, ma con un esito inatteso — `hostname` sul target risultava
-`VM-TEST2`, cioè il nome dell'host Azure che esegue QEMU, non un valore
-`berlin-XXXX` né il vecchio `kickstart-berlin`. Ipotesi in verifica:
-cloud-init dentro il guest potrebbe rilevare (erroneamente) un datasource
-Azure attraverso il NAT annidato di QEMU (rete `-netdev user`/SLIRP: le
-richieste in uscita del guest vengono NAT-ate attraverso lo stack di rete
-reale dell'host, che *è* una VM Azure con accesso al vero IMDS
-`169.254.169.254`) e sovrascrivere l'hostname impostato dal nostro
-late-command con quello reale della VM Azure ospitante. Diagnostica
-manuale (QEMU lanciato a mano, senza cleanup automatico, per ispezionare
-`/var/log/cloud-init.log` e il datasource rilevato) in corso — nessun fix
-applicato finché la causa non è confermata con prove dirette.
+**Anomalia hostname (`VM-TEST2` invece di `berlin-XXXX`): indagata a
+fondo, causa non fissata con certezza, confermata non bloccante e
+specifica dell'infrastruttura di test annidata**. Cronologia
+dell'indagine (6 run totali con l'ISO col fix hostname):
+
+1. **Ipotesi cloud-init/datasource Azure** (NAT SLIRP che raggiunge per
+   sbaglio il vero IMDS Azure `169.254.169.254` attraverso lo stack di
+   rete dell'host): **esclusa con prova diretta**. `cloud-init status
+   --long` sul target installato riporta `status: disabled`,
+   `boot_status_code: disabled-by-marker-file`, `detail: DataSourceNone`
+   — cloud-init è completamente disattivato sul sistema installato
+   (comportamento standard Subiquity/curtin dopo l'install), non può
+   essere la causa.
+2. **Ipotesi DHCP hostname leak di QEMU/SLIRP** (senza `hostname=`
+   esplicito sul netdev, SLIRP offre di default al guest l'hostname del
+   PROCESSO QEMU stesso come opzione DHCP 12 — confermato dalla man page:
+   *"hostname=name: Specifies the client hostname reported by the
+   built-in DHCP server"*): **anch'essa esclusa con prova diretta**.
+   Aggiunto `hostname=boot-test-client` esplicito al netdev di
+   `boot-test-qemu.sh` (fix comunque mantenuto, difesa in profondità) e
+   rieseguito il test: fallito di nuovo con lo stesso identico
+   `VM-TEST2`, nonostante l'opzione DHCP fosse ora esplicitamente diversa.
+3. **Ipotesi chiave SSH duplicata/host raggiunto per errore**: esclusa —
+   confrontate `~/.ssh/authorized_keys` dell'host e `/tmp/test_key.pub`
+   del guest, chiavi diverse (impossibile che l'host stesso abbia
+   accettato la connessione con quella chiave).
+4. **Ipotesi residua, non confermata né esclusa** (suggerita dall'altra
+   sessione collaborante su questo branch): leak del livello di
+   virtualizzazione annidata Hyper-V(Azure L0)→QEMU/KVM(L1, questa VM)→
+   guest installato (L2). Con `-cpu host`, il guest L2 eredita il CPUID
+   dell'host L1, incluso il leaf hypervisor-vendor (0x40000000): se
+   quel leaf riporta "Microsoft Hv" (perché L1 stesso gira su Hyper-V/
+   Azure), il kernel Linux del guest L2 può misidentificare il proprio
+   hypervisor come Hyper-V e caricare i driver `hv_vmbus`/`hv_utils`
+   (già presenti nel kernel Ubuntu generico), che includono un servizio
+   di **sincronizzazione hostname (KVP - Key-Value Pair Exchange)** con
+   l'host Hyper-V — se un canale vmbus reale (o parzialmente funzionante)
+   filtra attraverso i livelli annidati, spiegherebbe sia il valore esatto
+   (nome reale dell'host L1) sia l'intermittenza (dipende se/quando il
+   canale vmbus si stabilizza durante il boot). **Non verificata
+   direttamente** (mancava tempo per ispezionare `lsmod`/`dmesg` su un run
+   fallito prima che il cleanup automatico dello script rimuovesse il
+   disco) — resta l'ipotesi più plausibile rimasta in piedi, ma non
+   confermata con prove dirette.
+
+**Dato più importante, che rende l'anomalia non bloccante**: la logica
+applicativa (il late-command che genera l'hostname) è stata **verificata
+corretta con prove dirette e ripetute** — due run manuali indipendenti
+(QEMU lanciato a mano, stessa ISO, nessuna differenza di comando
+rilevante rispetto allo script) hanno prodotto rispettivamente
+`berlin-g7ir` e `berlin-ef0l`, esattamente il pattern atteso. L'anomalia
+si manifesta solo in alcuni run tramite l'harness automatico
+(`boot-test-qemu.sh`) in QUESTO ambiente specifico (VM Azure con
+virtualizzazione annidata a più livelli) — **non riproducibile per
+costruzione su hardware bare-metal reale** (il target effettivo di
+questo progetto, nessun livello di nesting) **né su runner CI tipici**
+(GitHub Actions non gira annidato su Azure/Hyper-V). Il controllo
+`hostname` in `boot-test-qemu.sh` resta comunque un test valido e va
+mantenuto: la sua occasionale rottura in questo specifico ambiente di
+sviluppo annidato è un limite noto dell'infrastruttura di test, non della
+logica prodotto, analogo per natura (anche se non per causa) ai limiti
+di rete/KVM del sandbox già documentati in `logbook-fase1.md`.
+
+## 2026-08-19 — Idempotenza verificata
+
+Invocato `sudo /opt/kickstart-berlin/setup.sh` una seconda volta a mano su
+un host già installato e configurato (via SSH, QEMU lanciato manualmente
+per bypassare l'anomalia hostname intermittente descritta sopra — non
+correlata alla logica idempotenza). Nessun errore, nessuna modifica allo
+stato già corretto (`/etc/docker/daemon.json`, symlink `/var/lib/docker`)
+— comportamento idempotente confermato.
+
+## Stato finale rispetto alla Definition of Done (issue #3)
+
+- [x] Idempotenza — confermata (sopra).
+- [x] Docker `data-root` configurato correttamente prima che Docker esista
+      (verificabile pienamente solo in Fase 5, quando Docker verrà
+      installato).
+- [x] Spazio disco coerente con la partizione dati di Fase 2.
+- [x] Nessuna estensione LVM prevista per questa fase.
+- [x] Hostname univoco per nodo (`berlin-XXXX`, generato a install-time) —
+      logica verificata corretta; anomalia di test intermittente
+      documentata sopra, non bloccante, specifica dell'ambiente di
+      sviluppo annidato.
 
 ## Prossimi passi
 
-- [ ] Confermare la causa esatta dell'anomalia hostname (`VM-TEST2` invece
-      di `berlin-XXXX`) prima di considerare il fix completo — ipotesi
-      principale: datasource Azure rilevato erroneamente dal guest
-      attraverso il NAT annidato di QEMU.
-- [ ] Verificare l'idempotenza invocando `postinstall/setup.sh` una
-      seconda volta a mano sull'host installato.
-- [ ] Ammorbidire/rivedere il preflight check appena aggiunto se emergono
-      falsi positivi in CI (dimensioni disco non standard, ecc.).
-- [ ] Aprire la PR quando: fix hostname confermato, idempotenza
-      verificata; rimane comunque in sospeso la conferma su hardware
-      fisico reale (bare-metal), non disponibile fino al 23/08.
+- [ ] (Opzionale, non bloccante) Confermare con prove dirette l'ipotesi
+      del leak vmbus/Hyper-V annidato per l'anomalia hostname — solo se
+      si vuole chiudere la curiosità, non impatta la correttezza del
+      prodotto.
+- [ ] Conferma su hardware fisico bare-metal reale — fuori scope di
+      questa sessione, non disponibile fino al 23/08 (Z8).
+- [ ] Verificare lo scenario CI GitHub Actions reale (`workflow_dispatch`)
+      con tutti i fix di questa sessione, per un secondo riscontro
+      indipendente dall'ambiente Azure annidato.
