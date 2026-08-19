@@ -235,4 +235,31 @@ if [[ "$NUM_DISKS" == 2 ]]; then
       "(disco system atteso: ${DISK_SIZE}, il più piccolo dei due)."
 fi
 
+log "Verifico il post-install (Fase 3, issue #3: storage Docker sul Datastore) ..."
+POSTINSTALL_MARKER_ELAPSED=0
+POSTINSTALL_OK=0
+while (( POSTINSTALL_MARKER_ELAPSED < 120 )); do
+  if "${SSH_CMD[@]}" '[ -f /opt/kickstart-berlin/.setup-complete ]' 2>/dev/null; then
+    POSTINSTALL_OK=1
+    break
+  fi
+  sleep 10
+  POSTINSTALL_MARKER_ELAPSED=$(( POSTINSTALL_MARKER_ELAPSED + 10 ))
+done
+if [[ "$POSTINSTALL_OK" != "1" ]]; then
+  "${SSH_CMD[@]}" "systemctl status kickstart-berlin-postinstall.service --no-pager 2>&1; journalctl -u kickstart-berlin-postinstall.service --no-pager 2>&1" || true
+  err "kickstart-berlin-postinstall.service non ha completato entro 120s dal login SSH"
+fi
+
+DOCKER_DATA_ROOT="${DATASTORE_LINK}/docker"
+POSTINSTALL_CHECK="set -e; \
+[ \"\$(readlink -f /var/lib/docker)\" = \"\$(readlink -f '${DOCKER_DATA_ROOT}')\" ]; \
+python3 -c \"import json; d=json.load(open('/etc/docker/daemon.json')); assert d['data-root']=='${DOCKER_DATA_ROOT}', d\""
+if ! "${SSH_CMD[@]}" "$POSTINSTALL_CHECK"; then
+  "${SSH_CMD[@]}" "readlink -f /var/lib/docker; echo ---; cat /etc/docker/daemon.json 2>&1" || true
+  err "storage Docker non preparato correttamente: /var/lib/docker o /etc/docker/daemon.json non puntano a ${DOCKER_DATA_ROOT}"
+fi
+
+log "Post-install verificato: /var/lib/docker -> ${DOCKER_DATA_ROOT}, daemon.json coerente."
+
 log "Test superato."

@@ -263,6 +263,19 @@ sed -e "s| __STORAGE_CONFIG__\$||" \
       -e "s|__DATASTORE_SYMLINK_NAME__|${DEFAULT_DATASTORE_SYMLINK_NAME}|g" \
   > "$AUTOINSTALL_USER_DATA"
 
+# Script post-install (Fase 3+, issue #3): stesso trattamento di
+# iso/user-data, i placeholder Datastore vengono sostituiti a build-time
+# dalla stessa fonte (config/autoinstall-defaults.json). Il file .service
+# non ha placeholder, viene copiato così com'è.
+POSTINSTALL_STAGE="${WORK_DIR}/postinstall"
+mkdir -p "$POSTINSTALL_STAGE"
+sed \
+    -e "s|__DATASTORE_MOUNT_ROOT__|${DEFAULT_DATASTORE_MOUNT_ROOT}|g" \
+    -e "s|__DATASTORE_SYMLINK_NAME__|${DEFAULT_DATASTORE_SYMLINK_NAME}|g" \
+    "${REPO_ROOT}/postinstall/setup.sh" \
+  > "${POSTINSTALL_STAGE}/setup.sh"
+cp "${REPO_ROOT}/postinstall/kickstart-berlin-postinstall.service" "${POSTINSTALL_STAGE}/"
+
 VOLID="$(xorriso -indev "$SOURCE_ISO" -pvd_info 2>/dev/null \
   | awk -F': ' '/Volume Id/{print $2; exit}')"
 [[ -n "$VOLID" ]] || VOLID="Ubuntu-Server ${UBUNTU_VERSION}"
@@ -280,6 +293,7 @@ xorriso -abort_on FAILURE \
   -outdev "$OUTPUT_ISO" \
   -map "$AUTOINSTALL_USER_DATA" /server/user-data \
   -map "${REPO_ROOT}/iso/meta-data" /server/meta-data \
+  -map "$POSTINSTALL_STAGE" /postinstall \
   "${MAP_ARGS[@]}" \
   -boot_image any replay \
   -volid "$VOLID" \

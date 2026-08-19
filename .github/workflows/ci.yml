@@ -28,8 +28,8 @@ jobs:
       - name: Valida sintassi e struttura di iso/user-data
         run: python3 scripts/validate-autoinstall.py iso/user-data
 
-      - name: Shellcheck sugli script di build/test
-        run: shellcheck scripts/*.sh
+      - name: Shellcheck sugli script di build/test e post-install
+        run: shellcheck scripts/*.sh postinstall/*.sh
 
   build-and-boot-test:
     name: Integrazione — build ISO reale + boot QEMU/KVM (${{ matrix.disks }} disco/i)

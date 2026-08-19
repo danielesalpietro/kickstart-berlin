@@ -195,6 +195,21 @@ def validate_storage_fragment(path: str) -> None:
           f"fstype: {sorted(fstypes)})")
 
 
+def validate_postinstall_template(path: str) -> None:
+    with open(path, encoding="utf-8") as f:
+        raw = f.read()
+
+    substituted = substitute_dummies(raw)
+    leftover = PLACEHOLDER_RE.findall(substituted)
+    if leftover:
+        fail(f"{path}: placeholder non riconosciuti rimasti dopo la sostituzione: {sorted(set(leftover))}")
+
+    if not raw.lstrip().startswith("#!/usr/bin/env bash"):
+        fail(f"{path}: shebang mancante o inatteso")
+
+    print(f"OK: {path} è un template post-install valido (nessun placeholder residuo)")
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         fail(f"uso: {sys.argv[0]} <path-user-data>")
@@ -208,6 +223,11 @@ def main() -> None:
         fail(f"nessun frammento storage-*-disk.yaml trovato in {iso_dir}")
     for fragment in fragments:
         validate_storage_fragment(fragment)
+
+    postinstall_setup = os.path.join(iso_dir, "..", "postinstall", "setup.sh")
+    if not os.path.exists(postinstall_setup):
+        fail(f"postinstall/setup.sh non trovato (atteso in {postinstall_setup})")
+    validate_postinstall_template(postinstall_setup)
 
 
 if __name__ == "__main__":

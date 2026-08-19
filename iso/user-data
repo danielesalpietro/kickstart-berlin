@@ -1,5 +1,5 @@
 #cloud-config
-# autoinstall (Subiquity) per le Fasi 1-2 — vedi README, issue #1, #2.
+# autoinstall (Subiquity) per le Fasi 1-3 — vedi README, issue #1, #2, #3.
 #
 # Questo file è un template: i placeholder __SSH_AUTHORIZED_KEY__ e
 # __STORAGE_CONFIG__ vengono sostituiti da scripts/build-iso.sh coi
@@ -97,5 +97,22 @@ autoinstall:
       mkdir -p "__DATASTORE_MOUNT_ROOT__/$DS_UUID";
       echo "UUID=$DS_UUID __DATASTORE_MOUNT_ROOT__/$DS_UUID __DATASTORE_FILESYSTEM__ defaults 0 2" >> /etc/fstab;
       ln -s "$DS_UUID" "__DATASTORE_MOUNT_ROOT__/__DATASTORE_SYMLINK_NAME__"'
+
+    # Installa lo script post-install (postinstall/setup.sh, Fase 3+,
+    # issue #3 e successive) come systemd unit oneshot al primo boot —
+    # architettura descritta in README ("Script post-install... eseguito
+    # al primo boot via systemd unit oneshot"). Copia diretta (non via
+    # "curtin in-target": /cdrom, dove risiede l'ISO con /postinstall/,
+    # non è garantito accessibile dentro quel chroot) — "systemctl enable
+    # --root=" abilita l'unit sul target offline senza bisogno di chroot.
+    - >-
+      sh -c
+      'set -e;
+      mkdir -p /target/opt/kickstart-berlin;
+      cp -r /cdrom/postinstall/. /target/opt/kickstart-berlin/;
+      chmod +x /target/opt/kickstart-berlin/setup.sh;
+      mkdir -p /target/etc/systemd/system;
+      cp /target/opt/kickstart-berlin/kickstart-berlin-postinstall.service /target/etc/systemd/system/kickstart-berlin-postinstall.service;
+      systemctl enable --root=/target kickstart-berlin-postinstall.service'
 
   shutdown: reboot
