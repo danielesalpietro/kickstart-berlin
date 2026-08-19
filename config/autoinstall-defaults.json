@@ -4,8 +4,8 @@
   "ubuntu_version": "24.04.2",
 
   "identity": {
-    "$comment": "Valore di riferimento/documentazione: rispecchia quanto hardcoded in iso/user-data, ma non e' (ancora) letto da build-iso.sh ne' agganciato a un flag CLI - a differenza di storage.*, che e' la fonte attiva.",
-    "hostname": "kickstart-berlin",
+    "$comment": "hostname_prefix e' usato a build-time (placeholder __HOSTNAME_PREFIX__ in iso/user-data), ma l'hostname finale <prefix>-XXXX (XXXX: fino a 4 caratteri alfanumerici casuali) viene generato a INSTALL-time via late-commands, non qui: la stessa ISO puo' installare piu' nodi fisici diversi (es. da chiavetta USB, vedi docs/usb-boot.md), un hostname fisso nell'ISO farebbe collidere piu' nodi sulla stessa rete.",
+    "hostname_prefix": "berlin",
     "username": "admin"
   },
 

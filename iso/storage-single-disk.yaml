@@ -9,30 +9,25 @@
         match: {}
         ptable: gpt
         wipe: superblock
-        grub_device: true
 
-      # Partizione BIOS Boot (nessun filesystem, GRUB vi incorpora il
-      # proprio core.img): senza, "grub-install" per la piattaforma
-      # legacy i386-pc fallisce su tabella GPT ("this GPT partition
-      # label contains no BIOS Boot Partition; embedding won't be
-      # possible", scoperto in un boot test QEMU reale in BIOS legacy -
-      # vedi logbook-fase2.md). Necessaria per qualunque boot non-UEFI su
-      # GPT, non solo per il test: va prima delle altre partizioni per
-      # posizionamento convenzionale a inizio disco.
-      - type: partition
-        id: bios-boot-partition
-        device: system-disk
-        size: 1M
-        flag: bios_grub
-
-      # "grub_device: true" qui (oltre che sul disco sopra, necessario per
-      # il boot BIOS legacy): su un sistema UEFI Subiquity non riconosce la
-      # ESP come partizione bootloader senza questo flag esplicito sulla
-      # partizione stessa, e rifiuta l'intera config PRIMA di iniziare il
-      # partizionamento con "autoinstall config did not create needed
-      # bootloader partition" - scoperto in un boot test Hyper-V reale
-      # (Gen2, sempre UEFI), mai esercitato dal test QEMU in BIOS legacy
-      # del sandbox - vedi logbook-fase2.md.
+      # Solo UEFI (decisione 2026-08-19, vedi logbook-fase2.md): niente
+      # partizione BIOS Boot, "grub_device: true" solo sulla ESP sotto.
+      # Il legacy BIOS non e' piu' supportato - l'hardware GPU target di
+      # Vast.ai/Grastorp boota quasi universalmente UEFI, e curtin non
+      # filtra i target grub_device in base alla modalita' firmware
+      # effettiva: con il flag presente SIA sul disco SIA sulla ESP,
+      # "grub-install" viene invocato su entrambi incondizionatamente,
+      # e su un boot BIOS legacy il tentativo sulla ESP (FAT32) fallisce
+      # sempre ("File system 'fat' doesn't support embedding... will not
+      # proceed with blocklists"), mandando in errore l'intero autoinstall
+      # - scoperto in un boot test QEMU reale in BIOS legacy del sandbox.
+      #
+      # "grub_device: true" qui: su un sistema UEFI Subiquity non
+      # riconosce la ESP come partizione bootloader senza questo flag
+      # esplicito sulla partizione stessa, e rifiuta l'intera config
+      # PRIMA di iniziare il partizionamento con "autoinstall config did
+      # not create needed bootloader partition" - scoperto in un boot
+      # test Hyper-V reale (Gen2, sempre UEFI).
       - type: partition
         id: efi-partition
         device: system-disk

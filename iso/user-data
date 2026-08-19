@@ -1,5 +1,5 @@
 #cloud-config
-# autoinstall (Subiquity) per le Fasi 1-2 — vedi README, issue #1, #2.
+# autoinstall (Subiquity) per le Fasi 1-3 — vedi README, issue #1, #2, #3.
 #
 # Questo file è un template: i placeholder __SSH_AUTHORIZED_KEY__ e
 # __STORAGE_CONFIG__ vengono sostituiti da scripts/build-iso.sh coi
@@ -9,12 +9,33 @@
 autoinstall:
   version: 1
 
+  # Hook opzionale, usato SOLO dai build di sviluppo/test (mai in
+  # produzione — vedi scripts/build-iso.sh --dev-skip-security-updates e
+  # logbook-fase3.md). Di default e' un no-op ("true"): la build di
+  # produzione scarica ed installa davvero gli update di sicurezza
+  # (updates: security sotto), come da comportamento nativo Subiquity.
+  # Quando il flag di sviluppo e' passato, questa riga diventa un comando
+  # che blocca la risoluzione di security.ubuntu.com nell'ambiente live
+  # (via /etc/hosts), cosi' lo step "updates: security" fallisce
+  # rapidamente invece di attendere/riprovare in rete per decine di
+  # minuti ad ogni singolo ciclo di test — costoso specialmente sotto
+  # emulazione TCG (nessun KVM) come nel sandbox di sviluppo. early-
+  # commands gira "prima del probing dei device di rete" (v. Subiquity
+  # autoinstall reference), quindi la voce in /etc/hosts persiste per
+  # tutta la sessione live, inclusa la fase updates successiva.
+  early-commands:
+    - '__DEV_SKIP_SECURITY_UPDATES_HOOK__'
+
   locale: en_US.UTF-8
   keyboard:
     layout: us
 
   identity:
-    hostname: kickstart-berlin
+    # Solo il prefisso a build-time (placeholder, vedi config/
+    # autoinstall-defaults.json): l'hostname finale <prefix>-XXXX viene
+    # generato a install-time via late-commands sotto, per non far
+    # collidere piu' nodi installati dalla stessa ISO.
+    hostname: __HOSTNAME_PREFIX__
     username: admin
     # Hash placeholder (password casuale, mai usata) con prefisso "!":
     # convenzione standard di /etc/shadow per un account gia' bloccato
@@ -64,6 +85,38 @@ autoinstall:
     # MAC address della VM (funziona senza toccare l'autoinstall).
 
   late-commands:
+    # Hostname finale univoco: identity.hostname sopra e' solo il prefisso
+    # (placeholder __HOSTNAME_PREFIX__, sostituito a build-time) usato
+    # transitoriamente durante l'installazione stessa. La parte random
+    # viene generata QUI, a install-time (non a build-time): la stessa ISO
+    # puo' installare piu' nodi fisici diversi (es. da chiavetta USB, vedi
+    # docs/usb-boot.md) - un hostname fisso nell'ISO farebbe collidere piu'
+    # nodi sulla stessa rete. /dev/urandom e' gia' disponibile nell'chroot
+    # curtin in-target.
+    - >-
+      curtin in-target --target=/target -- sh -c
+      'set -e;
+      SUFFIX=$(tr -dc "a-z0-9" </dev/urandom | head -c4);
+      NEW_HOSTNAME="__HOSTNAME_PREFIX__-$SUFFIX";
+      echo "$NEW_HOSTNAME" > /etc/hostname;
+      sed -i "s/^127\.0\.1\.1.*/127.0.1.1\t$NEW_HOSTNAME/" /etc/hosts'
+
+    # Hardening: disabilita esplicitamente il rilevamento multi-cloud di
+    # cloud-init sul target (Subiquity lo disattiva gia' di default via
+    # marker file dopo l'install, ma senza questa chiave esplicita
+    # resterebbe comunque configurato con la lista datasource di default
+    # se mai riabilitato/rieseguito). Un nodo GPU bare-metal Vast.ai/
+    # Grastorp non ha alcun bisogno del rilevamento automatico di
+    # datasource cloud (Azure/EC2/GCE/...): elimina un'intera classe di
+    # rischio ("qualche servizio di metadata diventa raggiungibile per
+    # sbaglio e sovrascrive hostname/chiavi/rete", sospettato ma non
+    # confermato come causa di un'anomalia hostname osservata durante lo
+    # sviluppo, vedi logbook-fase3.md).
+    - >-
+      curtin in-target --target=/target -- sh -c
+      'mkdir -p /etc/cloud/cloud.cfg.d;
+      echo "datasource_list: [None]" > /etc/cloud/cloud.cfg.d/99-disable-datasource.cfg'
+
     # L'account admin ha la password bloccata (vedi identity.password
     # sopra) e l'unico accesso e' via chiave SSH: richiedere ANCHE una
     # password per sudo lo renderebbe di fatto inutilizzabile (nessuna
@@ -97,5 +150,22 @@ autoinstall:
       mkdir -p "__DATASTORE_MOUNT_ROOT__/$DS_UUID";
       echo "UUID=$DS_UUID __DATASTORE_MOUNT_ROOT__/$DS_UUID __DATASTORE_FILESYSTEM__ defaults 0 2" >> /etc/fstab;
       ln -s "$DS_UUID" "__DATASTORE_MOUNT_ROOT__/__DATASTORE_SYMLINK_NAME__"'
+
+    # Installa lo script post-install (postinstall/setup.sh, Fase 3+,
+    # issue #3 e successive) come systemd unit oneshot al primo boot —
+    # architettura descritta in README ("Script post-install... eseguito
+    # al primo boot via systemd unit oneshot"). Copia diretta (non via
+    # "curtin in-target": /cdrom, dove risiede l'ISO con /postinstall/,
+    # non è garantito accessibile dentro quel chroot) — "systemctl enable
+    # --root=" abilita l'unit sul target offline senza bisogno di chroot.
+    - >-
+      sh -c
+      'set -e;
+      mkdir -p /target/opt/kickstart-berlin;
+      cp -r /cdrom/postinstall/. /target/opt/kickstart-berlin/;
+      chmod +x /target/opt/kickstart-berlin/setup.sh;
+      mkdir -p /target/etc/systemd/system;
+      cp /target/opt/kickstart-berlin/kickstart-berlin-postinstall.service /target/etc/systemd/system/kickstart-berlin-postinstall.service;
+      systemctl enable --root=/target kickstart-berlin-postinstall.service'
 
   shutdown: reboot

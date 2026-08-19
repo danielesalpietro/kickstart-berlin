@@ -27,6 +27,8 @@ SKIP_GPG_CHECK="${SKIP_GPG_CHECK:-0}"
 UBUNTU_VERSION=""
 SYSTEM_PARTITION_SIZE=""
 DISK_TOPOLOGY=""
+HOSTNAME_PREFIX=""
+DEV_SKIP_SECURITY_UPDATES=0
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." &>/dev/null && pwd)"
@@ -54,12 +56,14 @@ emit("DEFAULT_DATASTORE_FILESYSTEM", ds["filesystem"])
 emit("DEFAULT_DATASTORE_LABEL", ds["label"])
 emit("DEFAULT_DATASTORE_MOUNT_ROOT", ds["mount_root"])
 emit("DEFAULT_DATASTORE_SYMLINK_NAME", ds["symlink_name"])
+emit("DEFAULT_HOSTNAME_PREFIX", d["identity"]["hostname_prefix"])
 PYEOF
 )
 
 UBUNTU_VERSION="$DEFAULT_UBUNTU_VERSION"
 SYSTEM_PARTITION_SIZE="$DEFAULT_SYSTEM_PARTITION_SIZE"
 DISK_TOPOLOGY="$DEFAULT_DISK_TOPOLOGY"
+HOSTNAME_PREFIX="$DEFAULT_HOSTNAME_PREFIX"
 
 usage() {
   cat <<EOF
@@ -98,6 +102,26 @@ Opzioni:
                              più piccolo, datastore sull'altro per intero).
                              Default da config/autoinstall-defaults.json:
                              $([[ "$DISK_TOPOLOGY" == dual ]] && echo 2 || echo 1).
+      --hostname-prefix <p>  Prefisso per l'hostname (minuscolo, cifre e
+                             trattini, deve iniziare con una lettera).
+                             L'hostname finale <prefix>-XXXX (XXXX: fino a
+                             4 caratteri alfanumerici casuali) viene
+                             generato a install-time su ogni nodo, non qui
+                             (vedi iso/user-data late-commands): la stessa
+                             ISO puo' installare piu' nodi fisici diversi.
+                             Default da config/autoinstall-defaults.json:
+                             ${HOSTNAME_PREFIX}.
+      --dev-skip-security-updates
+                             SOLO sviluppo/test, MAI produzione: blocca
+                             security.ubuntu.com nell'ambiente live (via
+                             /etc/hosts, early-commands) cosi' lo step
+                             "updates: security" fallisce subito invece
+                             di impiegare decine di minuti in rete ad
+                             ogni ciclo di test/CI. L'immagine risultante
+                             NON ha gli update di sicurezza installati:
+                             non usare questo flag per ISO destinate a
+                             nodi reali. Default: disattivato (comporta-
+                             mento nativo Subiquity, update reali).
   -h, --help                Mostra questo messaggio.
 EOF
 }
@@ -118,6 +142,8 @@ while [[ $# -gt 0 ]]; do
         *) err "--disks accetta solo 1 o 2, ricevuto: $2" ;;
       esac
       shift 2 ;;
+    --hostname-prefix) HOSTNAME_PREFIX="$2"; shift 2 ;;
+    --dev-skip-security-updates) DEV_SKIP_SECURITY_UPDATES=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) err "Opzione sconosciuta: $1 (vedi --help)" ;;
   esac
@@ -141,6 +167,9 @@ fi
 [[ -n "$SSH_KEY_STRING" ]] || err "chiave pubblica SSH obbligatoria (-k/--ssh-key o --ssh-key-string)"
 [[ "$SSH_KEY_STRING" =~ ^(ssh-ed25519|ssh-rsa|ecdsa-sha2-) ]] \
   || err "la chiave fornita non sembra una chiave pubblica SSH valida"
+
+[[ "$HOSTNAME_PREFIX" =~ ^[a-z][a-z0-9-]*$ ]] \
+  || err "--hostname-prefix non valido: ${HOSTNAME_PREFIX} (deve iniziare con una lettera minuscola, poi solo minuscole/cifre/trattini)"
 
 [[ -z "$OUTPUT_ISO" ]] && OUTPUT_ISO="${REPO_ROOT}/build/kickstart-berlin-${UBUNTU_VERSION}-autoinstall.iso"
 mkdir -p "$(dirname "$OUTPUT_ISO")"
@@ -241,6 +270,13 @@ done
 
 log "Topologia dischi: ${DISK_TOPOLOGY} (${STORAGE_FRAGMENT})"
 
+if [[ "$DEV_SKIP_SECURITY_UPDATES" == "1" ]]; then
+  log "ATTENZIONE: --dev-skip-security-updates attivo — gli update di sicurezza NON verranno installati in questa ISO (solo sviluppo/test)."
+  DEV_SKIP_SECURITY_UPDATES_HOOK='echo "127.0.0.1 security.ubuntu.com" >> /etc/hosts'
+else
+  DEV_SKIP_SECURITY_UPDATES_HOOK="true"
+fi
+
 # Inserisce il frammento storage al posto del placeholder __STORAGE_CONFIG__
 # (idioma sed "r file" + "d": accoda il contenuto del frammento dopo la riga
 # placeholder, poi elimina la riga placeholder stessa), quindi sostituisce
@@ -261,7 +297,22 @@ sed -e "s| __STORAGE_CONFIG__\$||" \
       -e "s|__DATASTORE_LABEL__|${DEFAULT_DATASTORE_LABEL}|g" \
       -e "s|__DATASTORE_MOUNT_ROOT__|${DEFAULT_DATASTORE_MOUNT_ROOT}|g" \
       -e "s|__DATASTORE_SYMLINK_NAME__|${DEFAULT_DATASTORE_SYMLINK_NAME}|g" \
+      -e "s|__DEV_SKIP_SECURITY_UPDATES_HOOK__|${DEV_SKIP_SECURITY_UPDATES_HOOK}|" \
+      -e "s|__HOSTNAME_PREFIX__|${HOSTNAME_PREFIX}|g" \
   > "$AUTOINSTALL_USER_DATA"
+
+# Script post-install (Fase 3+, issue #3): stesso trattamento di
+# iso/user-data, i placeholder Datastore vengono sostituiti a build-time
+# dalla stessa fonte (config/autoinstall-defaults.json). Il file .service
+# non ha placeholder, viene copiato così com'è.
+POSTINSTALL_STAGE="${WORK_DIR}/postinstall"
+mkdir -p "$POSTINSTALL_STAGE"
+sed \
+    -e "s|__DATASTORE_MOUNT_ROOT__|${DEFAULT_DATASTORE_MOUNT_ROOT}|g" \
+    -e "s|__DATASTORE_SYMLINK_NAME__|${DEFAULT_DATASTORE_SYMLINK_NAME}|g" \
+    "${REPO_ROOT}/postinstall/setup.sh" \
+  > "${POSTINSTALL_STAGE}/setup.sh"
+cp "${REPO_ROOT}/postinstall/kickstart-berlin-postinstall.service" "${POSTINSTALL_STAGE}/"
 
 VOLID="$(xorriso -indev "$SOURCE_ISO" -pvd_info 2>/dev/null \
   | awk -F': ' '/Volume Id/{print $2; exit}')"
@@ -280,6 +331,7 @@ xorriso -abort_on FAILURE \
   -outdev "$OUTPUT_ISO" \
   -map "$AUTOINSTALL_USER_DATA" /server/user-data \
   -map "${REPO_ROOT}/iso/meta-data" /server/meta-data \
+  -map "$POSTINSTALL_STAGE" /postinstall \
   "${MAP_ARGS[@]}" \
   -boot_image any replay \
   -volid "$VOLID" \

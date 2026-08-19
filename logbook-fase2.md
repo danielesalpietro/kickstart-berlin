@@ -417,3 +417,81 @@ isolato o sistematico.
       GitHub Actions) per un secondo riscontro indipendente.
 - [ ] Aprire la PR quando il ciclo completo (incluso reboot+SSH) è
       confermato per entrambi gli scenari.
+
+## 2026-08-19 — Bug critico: `grub_device` su disco+ESP rompeva il boot BIOS legacy (nuova sessione, sandbox)
+
+Durante un boot test Fase 3 nel sandbox (nessun hardware reale
+disponibile: Z8 fuori uso fino al 23/08, vedi `logbook-fase3.md`), un
+run è arrivato fino a `curthooks`/`install-grub` e ha fallito con
+`CurtinInstallError`. Crash report completo (`/var/crash/*.crash`,
+recuperato via `scripts/_qemu_serial_diag.py`):
+
+```
+Grub install cmds:
+[['dpkg-reconfigure', 'grub-pc'], ['update-grub'],
+ ['grub-install', '/dev/vda'], ['grub-install', '/dev/vda2']]
+...
+Command: [... 'grub-install', '/dev/vda2']
+grub-install: warning: File system `fat' doesn't support embedding.
+grub-install: warning: Embedding is not possible. GRUB can only be
+    installed in this setup by using blocklists. However, blocklists
+    are UNRELIABLE and their use is discouraged..
+grub-install: error: will not proceed with blocklists.
+```
+
+**Causa**: `iso/storage-{single,dual}-disk.yaml` avevano `grub_device:
+true` sia sul disco di sistema (necessario per il boot BIOS legacy, fix
+del punto 6 sopra) sia sulla partizione ESP (necessario per UEFI, fix
+del 2026-08-19 precedente — vedi sotto). Curtin non filtra i target
+`grub_device` in base al firmware effettivamente rilevato al momento
+dell'installazione: raccoglie *ogni* device/partizione con quel flag e
+ci gira `grub-install` sopra incondizionatamente. Su un boot UEFI reale
+questo non è un problema (confermato: il test Hyper-V Gen2 sopra ha
+avuto successo con lo stesso doppio flag — `grub-install` sul disco
+intero non fallisce quando EFI è già rilevato). Ma su un boot BIOS
+legacy (il default di QEMU senza firmware esplicito, cioè esattamente
+il metodo con cui questo sandbox aveva sempre testato finora — vedi
+punto 6 sopra), il tentativo aggiuntivo `grub-install /dev/vda2` su una
+partizione FAT32 fallisce sempre e manda in errore l'intero
+autoinstall. Il fix per UEFI (Hyper-V) aveva quindi rotto silenziosamente
+il boot BIOS legacy, mai più testato dopo quel fix perché tutti i test
+successivi in sandbox erano su altre parti della pipeline (Fase 3) e non
+erano arrivati abbastanza lontano da toccare di nuovo `install-grub`.
+
+**Decisione** (chiesta esplicitamente all'utente, comporta una scelta di
+compatibilità hardware): **solo UEFI**, non entrambi. L'hardware GPU
+target di Vast.ai/Grastorp boota quasi universalmente UEFI; l'alternativa
+(rilevare il firmware a runtime via un early-command che riscrive
+`/autoinstall.yaml` prima che curtin giri) è stata scartata per
+complessità/superficie di test aggiuntiva non giustificata al momento.
+
+**Fix**: rimossi da entrambe le topologie sia `grub_device: true` sul
+disco di sistema sia la partizione `bios-boot-partition`
+(`flag: bios_grub`, ora inutile senza target BIOS) — resta
+`grub_device: true` solo sulla partizione ESP. `scripts/
+boot-test-qemu.sh` ora richiede esplicitamente firmware OVMF (cerca
+`OVMF_CODE_4M.fd`/`OVMF_VARS_4M.fd` in `/usr/share/OVMF` e percorsi
+equivalenti, fallisce con errore chiaro se non trovato) invece di
+lasciare che QEMU faccia fallback silenzioso su BIOS legacy — il sandbox
+di sviluppo ora testa la stessa modalità firmware del target reale.
+`.github/workflows/ci.yml` aggiorna l'installazione dipendenze del job
+di integrazione per includere il pacchetto `ovmf`.
+
+**Nota collaterale sulla diagnostica**: lo stesso run ha rivelato un
+buco nel harness di test stesso — `boot-test-qemu.sh` scartava lo
+stderr di QEMU (`>/dev/null 2>&1`) e salvava il log seriale accanto
+all'ISO solo nel percorso di timeout, non quando QEMU moriva prima del
+timeout (un secondo test in parallelo, con un flag di sviluppo non
+correlato, ha effettivamente perso la diagnostica in questo modo).
+Corretto in questa stessa sessione: stderr di QEMU ora va su file
+(`${WORK_DIR}/qemu-stderr.log`), e sia quello sia il log seriale vengono
+persistiti accanto all'ISO su *qualunque* percorso di uscita anomala.
+
+**Confermato**: ri-eseguito il boot test single-disk in sandbox con
+OVMF. `install-grub` completa questa volta senza errori (prima falliva
+sempre a questo punto) e l'installazione prosegue regolarmente fino a
+`run_unattended_upgrades` (dove va comunque in timeout per il limite di
+rete/velocità già noto del sandbox sotto TCG, non un fallimento — vedi
+`logbook-fase3.md` per il flag `--dev-skip-security-updates` pensato
+proprio per questo). Il fix risolve il problema. Resta comunque sospesa
+la conferma finale su hardware reale fino al ritorno della Z8 (23/08).

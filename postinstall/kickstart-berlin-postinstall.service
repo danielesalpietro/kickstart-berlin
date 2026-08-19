@@ -1,0 +1,14 @@
+[Unit]
+Description=kickstart-berlin post-install setup (one-shot)
+After=network-online.target local-fs.target
+Wants=network-online.target
+ConditionPathExists=!/opt/kickstart-berlin/.setup-complete
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/kickstart-berlin/setup.sh
+ExecStartPost=/usr/bin/touch /opt/kickstart-berlin/.setup-complete
+
+[Install]
+WantedBy=multi-user.target

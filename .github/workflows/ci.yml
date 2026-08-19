@@ -28,8 +28,8 @@ jobs:
       - name: Valida sintassi e struttura di iso/user-data
         run: python3 scripts/validate-autoinstall.py iso/user-data
 
-      - name: Shellcheck sugli script di build/test
-        run: shellcheck scripts/*.sh
+      - name: Shellcheck sugli script di build/test e post-install
+        run: shellcheck scripts/*.sh postinstall/*.sh
 
   build-and-boot-test:
     name: Integrazione — build ISO reale + boot QEMU/KVM (${{ matrix.disks }} disco/i)
@@ -51,10 +51,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Installa dipendenze (xorriso, QEMU/KVM)
+      - name: Installa dipendenze (xorriso, QEMU/KVM, firmware UEFI)
         run: |
+          # ovmf: solo UEFI dal 2026-08-19 (vedi logbook-fase2.md) —
+          # boot-test-qemu.sh richiede OVMF esplicitamente, niente
+          # fallback silenzioso su BIOS legacy (che con lo storage.config
+          # attuale fallisce sempre: grub_device solo sulla ESP).
           sudo apt-get update -qq
-          sudo apt-get install -y -qq xorriso qemu-system-x86 qemu-utils
+          sudo apt-get install -y -qq xorriso qemu-system-x86 qemu-utils ovmf
 
       - name: Abilita accesso KVM al runner
         run: |
@@ -75,10 +79,19 @@ jobs:
           # da 20G di boot-test-qemu.sh. Rilevante solo per la topologia
           # single (--disks 1): con "dual" il root usa l'intero disco
           # dedicato (size:-1), il flag viene ignorato senza effetto.
+          #
+          # --dev-skip-security-updates: SOLO qui (CI/test), MAI nel default
+          # di produzione. "updates: security" funziona correttamente dato
+          # abbastanza tempo (confermato in sandbox, vedi logbook-fase3.md),
+          # ma rifare il download/verifica update di sicurezza ad ogni run
+          # CI sprecherebbe ~40 minuti a run senza validare nulla di nuovo
+          # sulla nostra logica - qui si verifica l'autoinstall, non la
+          # freshness delle patch di sicurezza Ubuntu.
           scripts/build-iso.sh \
             -k "${{ runner.temp }}/test_key.pub" \
             --disks "${{ matrix.disks }}" \
             --system-size 10G \
+            --dev-skip-security-updates \
             -o "${{ runner.temp }}/kickstart-berlin-test.iso"
 
       - name: Boot ISO in QEMU, verifica autoinstall + login SSH + Datastore
