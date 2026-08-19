@@ -24,6 +24,10 @@ DISK_SIZE="${DISK_SIZE:-20G}"
 DISK_SIZE_2="${DISK_SIZE_2:-40G}"
 SSH_PORT="${SSH_PORT:-2222}"
 NUM_DISKS="${NUM_DISKS:-1}"
+MIN_MEMORY_MB="${MIN_MEMORY_MB:-1024}"
+MIN_DISK_SIZE_GIB="${MIN_DISK_SIZE_GIB:-8}"
+DATASTORE_MARGIN_GIB="${DATASTORE_MARGIN_GIB:-5}"
+MIN_FREE_HOST_DISK_GIB="${MIN_FREE_HOST_DISK_GIB:-10}"
 DATASTORE_MOUNT_ROOT="${DATASTORE_MOUNT_ROOT:-/grastorp/volumes}"
 DATASTORE_SYMLINK_NAME="${DATASTORE_SYMLINK_NAME:-datastore}"
 DATASTORE_FILESYSTEM="${DATASTORE_FILESYSTEM:-xfs}"
@@ -85,7 +89,7 @@ done
 [[ -n "$SSH_PRIVATE_KEY" ]] || err "-k/--ssh-key obbligatorio"
 [[ -f "$SSH_PRIVATE_KEY" ]] || err "chiave privata non trovata: $SSH_PRIVATE_KEY"
 
-for bin in qemu-system-x86_64 qemu-img ssh; do
+for bin in qemu-system-x86_64 qemu-img ssh xorriso python3; do
   command -v "$bin" >/dev/null 2>&1 || err "comando richiesto non trovato: $bin"
 done
 
@@ -105,6 +109,100 @@ cleanup() {
   rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
+
+# --- Requisiti minimi (preflight) -------------------------------------------
+# Validano i parametri del test PRIMA di creare dischi/lanciare QEMU. Senza
+# questo, un requisito non soddisfatto si manifesta solo a runtime: nel caso
+# peggiore già osservato (disco throwaway 20G di default contro una root
+# partition di produzione da 100G incorporata nell'ISO), curtin fallisce in
+# modo silenzioso su "root-partition" — nessun traceback in console — e senza
+# questo controllo lo script resta comunque appeso fino al pieno TIMEOUT
+# (fino a un'ora) prima di riportare un generico errore di connessione SSH.
+size_to_bytes() {
+  local s="$1"
+  [[ "$s" =~ ^([0-9]+)([KMGT])$ ]] || return 1
+  local num="${BASH_REMATCH[1]}" unit="${BASH_REMATCH[2]}"
+  case "$unit" in
+    K) echo $(( num * 1024 )) ;;
+    M) echo $(( num * 1024 * 1024 )) ;;
+    G) echo $(( num * 1024 * 1024 * 1024 )) ;;
+    T) echo $(( num * 1024 * 1024 * 1024 * 1024 )) ;;
+  esac
+}
+
+(( MEMORY_MB >= MIN_MEMORY_MB )) \
+  || err "RAM richiesta (--memory ${MEMORY_MB}) sotto il minimo ragionevole" \
+      "(${MIN_MEMORY_MB}MB): Subiquity può non completare l'installazione o" \
+      "fallire in modi difficili da diagnosticare con meno memoria."
+
+MIN_DISK_BYTES=$(( MIN_DISK_SIZE_GIB * 1024 * 1024 * 1024 ))
+for d_size in "$DISK_SIZE" "${DISK_SIZE_2:-}"; do
+  [[ -n "$d_size" ]] || continue
+  d_bytes="$(size_to_bytes "$d_size")" \
+    || err "formato dimensione disco non riconosciuto: ${d_size} (atteso es. 20G, 512M)"
+  (( d_bytes >= MIN_DISK_BYTES )) \
+    || err "dimensione disco ${d_size} sotto il minimo ragionevole" \
+        "(${MIN_DISK_SIZE_GIB}G): l'autoinstall Ubuntu Server non completerebbe" \
+        "con spazio così ridotto."
+done
+
+FREE_HOST_BYTES="$(df --output=avail -B1 "$WORK_DIR" | tail -n1 | tr -d ' ')"
+MIN_FREE_HOST_BYTES=$(( MIN_FREE_HOST_DISK_GIB * 1024 * 1024 * 1024 ))
+(( FREE_HOST_BYTES >= MIN_FREE_HOST_BYTES )) \
+  || err "spazio libero insufficiente su ${WORK_DIR} ($(( FREE_HOST_BYTES / 1024 / 1024 / 1024 ))G" \
+      "disponibili, minimo ${MIN_FREE_HOST_DISK_GIB}G): i dischi virtuali throwaway" \
+      "(qcow2, sparse ma in crescita) e i log seriali/diagnostica potrebbero" \
+      "esaurirlo a metà run."
+
+# Topologia single-disk: la root partition ha una dimensione fissa
+# incorporata a build-time nell'ISO (__SYSTEM_PARTITION_SIZE__ sostituito in
+# iso/storage-single-disk.yaml, default 100G di produzione) — verifica che il
+# disco throwaway sia abbastanza grande da contenerla, più margine per EFI e
+# per una partizione Datastore ancora effettivamente formattabile/montabile
+# (con "dual-disk" la root usa l'intero disco piccolo, "size: -1": nessun
+# mismatch possibile per costruzione, controllo non applicabile).
+if [[ "$NUM_DISKS" == 1 ]]; then
+  USER_DATA_EXTRACTED="${WORK_DIR}/user-data-preflight"
+  if xorriso -indev "$ISO" -osirrox on -extract /server/user-data "$USER_DATA_EXTRACTED" \
+      >/dev/null 2>&1 && [[ -s "$USER_DATA_EXTRACTED" ]]; then
+    ROOT_PARTITION_SIZE="$(python3 - "$USER_DATA_EXTRACTED" <<'PY'
+import sys, yaml
+doc = yaml.safe_load(open(sys.argv[1])) or {}
+# user-data e' un file "#cloud-config": tutta la config autoinstall vive
+# sotto la chiave top-level "autoinstall", non alla radice del documento.
+storage = (doc.get("autoinstall") or {}).get("storage") or {}
+size = ""
+for action in storage.get("config") or []:
+    if action.get("id") == "root-partition":
+        size = action.get("size")
+        break
+print(size if size is not None else "")
+PY
+)"
+    ROOT_BYTES="$(size_to_bytes "$ROOT_PARTITION_SIZE" 2>/dev/null || true)"
+    if [[ -n "$ROOT_BYTES" ]]; then
+      DISK_SIZE_BYTES="$(size_to_bytes "$DISK_SIZE")"
+      MARGIN_BYTES=$(( (512 + DATASTORE_MARGIN_GIB * 1024) * 1024 * 1024 ))
+      REQUIRED_BYTES=$(( ROOT_BYTES + MARGIN_BYTES ))
+      if (( DISK_SIZE_BYTES < REQUIRED_BYTES )); then
+        err "root partition da ${ROOT_PARTITION_SIZE} incorporata nell'ISO" \
+            "(--system-size di build-iso.sh) non ci sta nel disco throwaway" \
+            "--disk-size ${DISK_SIZE}: servono almeno" \
+            "$(( REQUIRED_BYTES / 1024 / 1024 / 1024 ))G (root + EFI + margine" \
+            "Datastore ${DATASTORE_MARGIN_GIB}G). Usa --disk-size più grande, o" \
+            "ricostruisci l'ISO con --system-size più piccolo per un test" \
+            "locale (mai per un'ISO di produzione)."
+      fi
+      log "Preflight: root partition ISO=${ROOT_PARTITION_SIZE}, disco throwaway=${DISK_SIZE} — OK."
+    else
+      log "Preflight: dimensione root partition nell'ISO non in formato" \
+          "riconosciuto (${ROOT_PARTITION_SIZE:-vuoto}), controllo saltato."
+    fi
+  else
+    log "Preflight: impossibile estrarre /server/user-data dall'ISO per il" \
+        "controllo dimensione root partition, controllo saltato (best-effort)."
+  fi
+fi
 
 DISK_ARGS=()
 DISK_SIZES=("$DISK_SIZE" "$DISK_SIZE_2")
@@ -257,6 +355,15 @@ fi
 
 log "Login SSH riuscito con la chiave iniettata a build-time: autoinstall completato"
 log "senza prompt, host installato e raggiungibile."
+
+log "Verifico l'hostname generato a install-time (deve essere <prefisso>-XXXX, non un valore fisso) ..."
+REMOTE_HOSTNAME="$("${SSH_CMD[@]}" hostname | tr -d '\r')"
+if [[ ! "$REMOTE_HOSTNAME" =~ ^[a-z][a-z0-9-]*-[a-z0-9]{1,4}$ ]]; then
+  err "hostname '${REMOTE_HOSTNAME}' non rispetta il pattern atteso <prefisso>-XXXX" \
+      "(XXXX: 1-4 caratteri alfanumerici casuali generati a install-time, vedi" \
+      "late-commands in iso/user-data)"
+fi
+log "Hostname verificato: ${REMOTE_HOSTNAME}"
 
 log "Verifico il mount del Datastore Grastorp (Fase 2, issue #2) ..."
 SSH_CMD=(ssh -p "$SSH_PORT" -i "$SSH_PRIVATE_KEY" \

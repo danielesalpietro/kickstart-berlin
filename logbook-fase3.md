@@ -244,12 +244,154 @@ alla fine, senza alcun intervento manuale:
 default), CI/sviluppo usano il flag per non sprecare ~40 minuti a run
 senza validare nulla di nuovo sulla nostra logica.
 
+## 2026-08-19 — VM Azure sostitutiva (Z8 non disponibile fino al 23/08): setup, due bug ambientali, poi conferma completa single/dual-disk
+
+Sessione "bridge" separata (accesso SSH diretto da un'altra sessione Claude
+Code), usata per colmare i due limiti del sandbox di sviluppo (nessun KVM,
+rete verso gli archivi Ubuntu instradata su proxy applicativo — vedi
+`logbook-fase1.md`) mentre la HP Z8 G4 è offline.
+
+**Setup VM, due falsi partenti prima di una macchina funzionante**:
+
+1. Prima VM (`VM-TEST`, Azure `Standard_E4s_v4`): `/dev/kvm` assente,
+   `/proc/cpuinfo` privo di `vmx`/`svm` (non solo modulo non caricato: la
+   CPU virtuale non esponeva affatto le istruzioni di virtualizzazione),
+   `modprobe kvm_intel` → `Operation not supported`. Causa: **Security type
+   "Trusted Launch"** anziché "Standard" — disabilita la virtualizzazione
+   annidata indipendentemente da dimensione/generazione VM, e **non è
+   modificabile su una VM esistente** (nessuna via, spenta o accesa: solo
+   Standard→Trusted Launch è supportato da Azure, mai il percorso
+   inverso) — richiede di ricreare la VM da zero.
+2. Primo tentativo di ricreazione con dimensione `Standard_E2ads_v6`/
+   `E4as_v6`/`E4ads_v6`: tutte serie **AMD** (convenzione naming Azure: la
+   lettera "a" dopo il conteggio vCPU = AMD). La virtualizzazione annidata
+   su Azure è documentata/confermata solo per le serie **Intel**
+   (Dv3/Ev3, Dv4/Ev4, Dv5/Ev5, ...) — scartate prima di provisionarle,
+   sulla base del naming, non per tentativi falliti.
+3. **`VM-TEST2`** (`Standard_E4ds_v6`, Intel, Security type Standard,
+   `Germany West Central`, resource group `VibeCoding`, riusando NIC/IP/
+   NSG/disco dati esistenti dove possibile) — confermato funzionante:
+   `/dev/kvm` presente, `vmx` in `/proc/cpuinfo`. L'utente `dsalpietro`
+   creato dalla VM non era nel gruppo `kvm` di default (serve una nuova
+   sessione SSH dopo `usermod -aG kvm`, i permessi di gruppo non si
+   applicano a sessioni già aperte).
+
+Host risultante (per riferimento futuro): Ubuntu 24.04.4 LTS, kernel
+`6.17.0-1022-azure`, CPU Intel Xeon Platinum 8573C (4 vCPU, 2 core/2
+thread, `vmx` confermato), 31GB RAM, root su NVMe 29G, disco dati NVMe
+256G riattaccato dalla VM precedente. Dipendenze installate via apt:
+`xorriso qemu-system-x86 qemu-utils ovmf git python3-yaml shellcheck`.
+
+**Errore mio da non ripetere**: ho sovrascritto `scripts/boot-test-qemu.sh`
+via `scp` mentre un boot test era ancora in esecuzione nel suo loop di
+polling — bash rilegge lo script da disco a runtime durante i loop, la
+sovrascrittura ha corrotto l'esecuzione con un syntax error a ~373s,
+proprio mentre il run (il primo con rete reale + KVM reale, senza
+`--dev-skip-security-updates`, pensato apposta per rispondere alla
+domanda aperta sotto) era in corso su `run_unattended_upgrades`. **Mai
+modificare uno script mentre un test lo sta eseguendo** — usare una copia
+separata per iterare, sincronizzare sui path reali solo a nessun test in
+corso.
+
+**Domanda aperta chiusa (era in `logbook-fase1.md`/`logbook-fase2.md`)**:
+con KVM reale e rete diretta senza restrizioni, un run single-disk
+completo (senza `--dev-skip-security-updates`, default di produzione:
+`updates: security` reale, `--system-size 100G`) impiega **~6-7 minuti
+totali** dall'avvio QEMU al login SSH (partizionamento+grub ~130s,
+`run_unattended_upgrades` completato tra 253s e 374s). Conferma che il
+timeout/blocco osservato nel sandbox (40+ minuti, mai completato) era
+dovuto alla sola lentezza dell'emulazione software TCG (nessun KVM), non
+a un blocco di rete verso gli archivi Ubuntu.
+
+**Bug preflight trovato durante questi test (infrastruttura, non logica
+Fase 2/3)**: il primo tentativo di questo run è fallito silenziosamente a
+~121s (`root-partition` FAIL, nessun traceback in console) — causa
+identica al fix #3 di `logbook-fase2.md`: disco throwaway di test 20G di
+default contro `--system-size` di produzione 100G. Senza un controllo
+esplicito, questo mismatch si sarebbe manifestato solo dopo l'intero
+timeout (fino a un'ora). **Fix**: nuova sezione di preflight in
+`scripts/boot-test-qemu.sh`, eseguita PRIMA di creare dischi/lanciare
+QEMU — estrae la dimensione reale della root partition incorporata
+nell'ISO (`/server/user-data`, via `xorriso -osirrox` + parsing YAML) e
+la confronta con `--disk-size`, più controlli generici (RAM minima 1024MB,
+dimensione disco minima 8G, spazio libero host minimo 10G). Bug trovato
+durante l'implementazione: il parser cercava `storage` alla radice del
+documento invece che sotto `autoinstall:` (il top-level key reale di un
+file `#cloud-config`) — corretto e verificato con un test negativo (20G
+contro root 100G: fallisce in 66ms con errore chiaro) e uno positivo
+(120G: passa, log esplicito "OK").
+
+**Conferma end-to-end completa, entrambe le topologie** (con
+`--disk-size 120G` per single-disk, a valle del fix preflight):
+- Single-disk: partizionamento, grub (solo UEFI, fix `grub_device` di
+  `logbook-fase2.md` riconfermato su KVM reale), Datastore XFS montato,
+  post-install Fase 3 (`/var/lib/docker` → Datastore, `daemon.json`
+  coerente) — tutto verificato, "Test superato."
+- Dual-disk (con `--dev-skip-security-updates`, la domanda di rete era
+  già chiusa dal run single-disk): stesso esito positivo, **confermata
+  anche la dimensione del device root** (~20GB, corrisponde al disco
+  "piccolo" atteso dall'euristica `match:{size:smallest}`) — prima
+  conferma reale di questa euristica su KVM/rete reali (in
+  `logbook-fase2.md` era confermata solo su Hyper-V/Z8).
+
+## 2026-08-19 — Bug reale: hostname hardcoded, fix + anomalia in corso di verifica
+
+Richiesta utente: la procedura deve generare un hostname univoco per nodo
+(`berlin-XXXX`, XXXX fino a 4 caratteri alfanumerici casuali), non un
+valore fisso. Verificato: `identity.hostname` in `iso/user-data` era
+hardcoded a `kickstart-berlin` — ogni nodo installato dalla stessa ISO
+avrebbe avuto lo stesso hostname, collisione garantita su una rete con più
+nodi (es. da chiavetta USB, vedi `docs/usb-boot.md`, dove la stessa ISO
+installa più macchine fisiche diverse).
+
+**Decisione di design**: la parte random va generata a **install-time**
+(late-commands, sull'host reale), non a build-time — un hostname fisso
+nell'ISO risolverebbe il problema solo se ogni nodo usasse un'ISO diversa,
+il che non è il caso d'uso (stessa ISO, più macchine).
+
+**Implementazione**:
+- `config/autoinstall-defaults.json`: `identity.hostname` →
+  `identity.hostname_prefix` (default `"berlin"`) — ora fonte attiva
+  (prima era solo "valore di riferimento/documentazione", non letta da
+  `build-iso.sh` né agganciata a un flag CLI).
+- `scripts/build-iso.sh`: nuovo flag `--hostname-prefix <p>` (validato:
+  minuscolo, deve iniziare con una lettera), sostituisce il nuovo
+  placeholder `__HOSTNAME_PREFIX__`.
+- `iso/user-data`: `identity.hostname: __HOSTNAME_PREFIX__` (solo
+  prefisso, usato transitoriamente durante l'installazione); nuovo
+  late-command genera `SUFFIX=$(tr -dc "a-z0-9" </dev/urandom | head -c4)`
+  e scrive `/etc/hostname` + riga `127.0.1.1` di `/etc/hosts` col
+  risultato finale `<prefix>-$SUFFIX`.
+- `scripts/validate-autoinstall.py`: nuovo placeholder nel dizionario di
+  sostituzione fittizia, letto dalla stessa fonte JSON.
+- `scripts/boot-test-qemu.sh`: nuova verifica post-login, controlla che
+  `hostname` sul target rispetti il pattern `<prefisso>-XXXX` (regex
+  `^[a-z][a-z0-9-]*-[a-z0-9]{1,4}$`).
+
+**Anomalia in corso di verifica**: primo boot test col fix hostname
+fallito, ma con un esito inatteso — `hostname` sul target risultava
+`VM-TEST2`, cioè il nome dell'host Azure che esegue QEMU, non un valore
+`berlin-XXXX` né il vecchio `kickstart-berlin`. Ipotesi in verifica:
+cloud-init dentro il guest potrebbe rilevare (erroneamente) un datasource
+Azure attraverso il NAT annidato di QEMU (rete `-netdev user`/SLIRP: le
+richieste in uscita del guest vengono NAT-ate attraverso lo stack di rete
+reale dell'host, che *è* una VM Azure con accesso al vero IMDS
+`169.254.169.254`) e sovrascrivere l'hostname impostato dal nostro
+late-command con quello reale della VM Azure ospitante. Diagnostica
+manuale (QEMU lanciato a mano, senza cleanup automatico, per ispezionare
+`/var/log/cloud-init.log` e il datasource rilevato) in corso — nessun fix
+applicato finché la causa non è confermata con prove dirette.
+
 ## Prossimi passi
 
+- [ ] Confermare la causa esatta dell'anomalia hostname (`VM-TEST2` invece
+      di `berlin-XXXX`) prima di considerare il fix completo — ipotesi
+      principale: datasource Azure rilevato erroneamente dal guest
+      attraverso il NAT annidato di QEMU.
 - [ ] Verificare l'idempotenza invocando `postinstall/setup.sh` una
       seconda volta a mano sull'host installato.
-- [ ] Ripetere la stessa conferma end-to-end anche per la topologia
-      dual-disk (finora verificata solo per single-disk in questo run).
-- [ ] Aprire la PR quando confermato anche per dual-disk; rimane
-      comunque in sospeso la conferma su hardware reale, non disponibile
-      fino al 23/08 (vedi sopra).
+- [ ] Ammorbidire/rivedere il preflight check appena aggiunto se emergono
+      falsi positivi in CI (dimensioni disco non standard, ecc.).
+- [ ] Aprire la PR quando: fix hostname confermato, idempotenza
+      verificata; rimane comunque in sospeso la conferma su hardware
+      fisico reale (bare-metal), non disponibile fino al 23/08.

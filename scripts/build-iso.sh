@@ -27,6 +27,7 @@ SKIP_GPG_CHECK="${SKIP_GPG_CHECK:-0}"
 UBUNTU_VERSION=""
 SYSTEM_PARTITION_SIZE=""
 DISK_TOPOLOGY=""
+HOSTNAME_PREFIX=""
 DEV_SKIP_SECURITY_UPDATES=0
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
@@ -55,12 +56,14 @@ emit("DEFAULT_DATASTORE_FILESYSTEM", ds["filesystem"])
 emit("DEFAULT_DATASTORE_LABEL", ds["label"])
 emit("DEFAULT_DATASTORE_MOUNT_ROOT", ds["mount_root"])
 emit("DEFAULT_DATASTORE_SYMLINK_NAME", ds["symlink_name"])
+emit("DEFAULT_HOSTNAME_PREFIX", d["identity"]["hostname_prefix"])
 PYEOF
 )
 
 UBUNTU_VERSION="$DEFAULT_UBUNTU_VERSION"
 SYSTEM_PARTITION_SIZE="$DEFAULT_SYSTEM_PARTITION_SIZE"
 DISK_TOPOLOGY="$DEFAULT_DISK_TOPOLOGY"
+HOSTNAME_PREFIX="$DEFAULT_HOSTNAME_PREFIX"
 
 usage() {
   cat <<EOF
@@ -99,6 +102,15 @@ Opzioni:
                              più piccolo, datastore sull'altro per intero).
                              Default da config/autoinstall-defaults.json:
                              $([[ "$DISK_TOPOLOGY" == dual ]] && echo 2 || echo 1).
+      --hostname-prefix <p>  Prefisso per l'hostname (minuscolo, cifre e
+                             trattini, deve iniziare con una lettera).
+                             L'hostname finale <prefix>-XXXX (XXXX: fino a
+                             4 caratteri alfanumerici casuali) viene
+                             generato a install-time su ogni nodo, non qui
+                             (vedi iso/user-data late-commands): la stessa
+                             ISO puo' installare piu' nodi fisici diversi.
+                             Default da config/autoinstall-defaults.json:
+                             ${HOSTNAME_PREFIX}.
       --dev-skip-security-updates
                              SOLO sviluppo/test, MAI produzione: blocca
                              security.ubuntu.com nell'ambiente live (via
@@ -130,6 +142,7 @@ while [[ $# -gt 0 ]]; do
         *) err "--disks accetta solo 1 o 2, ricevuto: $2" ;;
       esac
       shift 2 ;;
+    --hostname-prefix) HOSTNAME_PREFIX="$2"; shift 2 ;;
     --dev-skip-security-updates) DEV_SKIP_SECURITY_UPDATES=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) err "Opzione sconosciuta: $1 (vedi --help)" ;;
@@ -154,6 +167,9 @@ fi
 [[ -n "$SSH_KEY_STRING" ]] || err "chiave pubblica SSH obbligatoria (-k/--ssh-key o --ssh-key-string)"
 [[ "$SSH_KEY_STRING" =~ ^(ssh-ed25519|ssh-rsa|ecdsa-sha2-) ]] \
   || err "la chiave fornita non sembra una chiave pubblica SSH valida"
+
+[[ "$HOSTNAME_PREFIX" =~ ^[a-z][a-z0-9-]*$ ]] \
+  || err "--hostname-prefix non valido: ${HOSTNAME_PREFIX} (deve iniziare con una lettera minuscola, poi solo minuscole/cifre/trattini)"
 
 [[ -z "$OUTPUT_ISO" ]] && OUTPUT_ISO="${REPO_ROOT}/build/kickstart-berlin-${UBUNTU_VERSION}-autoinstall.iso"
 mkdir -p "$(dirname "$OUTPUT_ISO")"
@@ -282,6 +298,7 @@ sed -e "s| __STORAGE_CONFIG__\$||" \
       -e "s|__DATASTORE_MOUNT_ROOT__|${DEFAULT_DATASTORE_MOUNT_ROOT}|g" \
       -e "s|__DATASTORE_SYMLINK_NAME__|${DEFAULT_DATASTORE_SYMLINK_NAME}|g" \
       -e "s|__DEV_SKIP_SECURITY_UPDATES_HOOK__|${DEV_SKIP_SECURITY_UPDATES_HOOK}|" \
+      -e "s|__HOSTNAME_PREFIX__|${HOSTNAME_PREFIX}|g" \
   > "$AUTOINSTALL_USER_DATA"
 
 # Script post-install (Fase 3+, issue #3): stesso trattamento di

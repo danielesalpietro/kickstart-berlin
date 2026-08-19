@@ -31,7 +31,11 @@ autoinstall:
     layout: us
 
   identity:
-    hostname: kickstart-berlin
+    # Solo il prefisso a build-time (placeholder, vedi config/
+    # autoinstall-defaults.json): l'hostname finale <prefix>-XXXX viene
+    # generato a install-time via late-commands sotto, per non far
+    # collidere piu' nodi installati dalla stessa ISO.
+    hostname: __HOSTNAME_PREFIX__
     username: admin
     # Hash placeholder (password casuale, mai usata) con prefisso "!":
     # convenzione standard di /etc/shadow per un account gia' bloccato
@@ -81,6 +85,22 @@ autoinstall:
     # MAC address della VM (funziona senza toccare l'autoinstall).
 
   late-commands:
+    # Hostname finale univoco: identity.hostname sopra e' solo il prefisso
+    # (placeholder __HOSTNAME_PREFIX__, sostituito a build-time) usato
+    # transitoriamente durante l'installazione stessa. La parte random
+    # viene generata QUI, a install-time (non a build-time): la stessa ISO
+    # puo' installare piu' nodi fisici diversi (es. da chiavetta USB, vedi
+    # docs/usb-boot.md) - un hostname fisso nell'ISO farebbe collidere piu'
+    # nodi sulla stessa rete. /dev/urandom e' gia' disponibile nell'chroot
+    # curtin in-target.
+    - >-
+      curtin in-target --target=/target -- sh -c
+      'set -e;
+      SUFFIX=$(tr -dc "a-z0-9" </dev/urandom | head -c4);
+      NEW_HOSTNAME="__HOSTNAME_PREFIX__-$SUFFIX";
+      echo "$NEW_HOSTNAME" > /etc/hostname;
+      sed -i "s/^127\.0\.1\.1.*/127.0.1.1\t$NEW_HOSTNAME/" /etc/hosts'
+
     # L'account admin ha la password bloccata (vedi identity.password
     # sopra) e l'unico accesso e' via chiave SSH: richiedere ANCHE una
     # password per sudo lo renderebbe di fatto inutilizzabile (nessuna
