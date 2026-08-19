@@ -269,7 +269,14 @@ VOLID="$(xorriso -indev "$SOURCE_ISO" -pvd_info 2>/dev/null \
 
 log "Ripacchetto l'ISO iniettando autoinstall e preservando il boot catalog originale ..."
 rm -f "$OUTPUT_ISO"
-xorriso -indev "$SOURCE_ISO" \
+# "-abort_on FAILURE": senza, xorriso non restituisce un exit code diverso
+# da zero per problemi di severità FAILURE (es. spazio insufficiente sulla
+# destinazione) - lo script proseguirebbe come se l'ISO fosse stata scritta
+# correttamente nonostante xorriso l'abbia esplicitamente annullata
+# ("Image write cancelled"). Scoperto con un'ISO di build "riuscita" ma in
+# realtà mai scritta su disco.
+xorriso -abort_on FAILURE \
+  -indev "$SOURCE_ISO" \
   -outdev "$OUTPUT_ISO" \
   -map "$AUTOINSTALL_USER_DATA" /server/user-data \
   -map "${REPO_ROOT}/iso/meta-data" /server/meta-data \
@@ -277,6 +284,15 @@ xorriso -indev "$SOURCE_ISO" \
   -boot_image any replay \
   -volid "$VOLID" \
   >/dev/null
+
+# Controllo difensivo aggiuntivo, indipendente dall'exit code di xorriso:
+# l'ISO risultante deve esistere ed essere di dimensione plausibile (non
+# più piccola dell'ISO sorgente, dato che aggiunge solo file).
+[[ -s "$OUTPUT_ISO" ]] || err "ISO non generata: ${OUTPUT_ISO} mancante o vuota dopo xorriso"
+SOURCE_ISO_SIZE="$(stat -c%s "$SOURCE_ISO")"
+OUTPUT_ISO_SIZE="$(stat -c%s "$OUTPUT_ISO")"
+(( OUTPUT_ISO_SIZE >= SOURCE_ISO_SIZE )) \
+  || err "ISO generata (${OUTPUT_ISO_SIZE} byte) più piccola dell'ISO sorgente (${SOURCE_ISO_SIZE} byte): probabile scrittura incompleta"
 
 log "ISO generata: ${OUTPUT_ISO}"
 sha256sum "$OUTPUT_ISO" | tee "${OUTPUT_ISO}.sha256"
