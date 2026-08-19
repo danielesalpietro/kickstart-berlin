@@ -127,6 +127,91 @@ per entrambe le topologie (placeholder sostituiti, YAML risultante
 parsato, sequenza id delle azioni ispezionata) — struttura corretta in
 entrambi i casi. `shellcheck` pulito su tutti gli script modificati.
 
+## 2026-08-18/19 — Ciclo di test reali in sandbox cloud: 5 bug trovati e corretti
+
+Stesso ambiente dei test di Fase 1 (container isolato, senza `/dev/kvm`,
+rete verso gli archivi Ubuntu bloccata dal proxy del sandbox — vedi
+`logbook-fase1.md`). Boot test in QEMU/TCG del solo scenario a 1 disco
+(il 2 dischi richiede la stessa catena di fix, non ancora rieseguito
+dopo l'ultimo fix — vedi prossimi passi).
+
+1. **Label XFS troppo lunga** (segnalato dall'utente prima del primo
+   boot test): `grastorp-datastore` (18 caratteri) supera il limite di
+   12 per le label XFS — `mkfs.xfs -L` sarebbe fallito. Fix: label
+   ridotta a `datastore` (9 caratteri). Aggiunto anche un controllo
+   automatico dei limiti label-per-filesystem in
+   `validate-autoinstall.py` (xfs:12, ext4:16, fat32:11), e i valori di
+   sostituzione per la validazione ora si leggono da
+   `config/autoinstall-defaults.json` invece che da una copia hardcoded
+   nello script — la copia hardcoded era proprio il motivo per cui il
+   primo fix del JSON non sarebbe stato comunque verificato in CI.
+
+2. **Log seriale non persistito su fallimento**: il trap di cleanup di
+   `boot-test-qemu.sh` rimuove `WORK_DIR` (quindi il log seriale) a fine
+   script; su timeout l'unica diagnostica era una tail delle ultime 200
+   righe, insufficiente per errori tardivi (tutto ciò che succede prima
+   scorre via dalla finestra). Fix: il log completo viene copiato accanto
+   all'ISO (`<iso>.serial.log`) prima della pulizia.
+
+3. **Mismatch dimensione disco di test vs default di produzione**: con
+   il fix del log completo, il primo run mostrava il partizionamento
+   fermarsi silenziosamente dopo `root-partition` (nessun traceback in
+   console, solo "An error occurred"). Causa: il disco throwaway di
+   `boot-test-qemu.sh` è 20G di default, ma il default di produzione per
+   `--system-size` è 100G (giusto per hardware reale, convenzione
+   Vast.ai) — curtin non può creare una partizione root di quella
+   dimensione su un disco più piccolo. Non un bug della logica
+   storage.config: un mismatch tra default di produzione e dimensione
+   dei dischi di test. Fix: CI e test locali passano ora esplicitamente
+   `--system-size 10G` in fase di build. Approfittato per rimuovere
+   anche `package_update`/`package_upgrade` da `iso/user-data`
+   (chiavi cloud-init generiche non riconosciute a livello autoinstall
+   da Subiquity, viste come warning "Unrecognized top-level key" negli
+   stessi log — ridondanti con `updates: security` già presente).
+
+4. **Nessun traceback reale disponibile per crash tardivi**: col fix
+   #3, un run è arrivato molto più lontano — l'intero `storage.config`
+   (inclusa la partizione/format del Datastore) si completa con
+   successo, confermando che la logica di partizionamento della Fase 2
+   funziona. Il run però crasha comunque subito dopo (`finish:
+   subiquity/Install/install:` seguito immediatamente da un
+   `ErrorReporter/install_fail`, presumibilmente in postinstall/
+   late-commands, mai iniziato a tracciare prima del crash). La sola
+   trace ad alto livello che Subiquity scrive sulla console
+   (`start:`/`finish:`) non include mai il traceback reale, che finisce
+   solo nel crash report (`/var/crash/*.crash`) e nel log interno di
+   Subiquity — entrambi visibili solo dalla shell di recovery in cui
+   l'installer cade dopo l'errore. Investimento infrastrutturale invece
+   di continuare a indovinare alla cieca: la console seriale di
+   `boot-test-qemu.sh` passa da `-serial file:...` (sola scrittura) a un
+   chardev `socket` con `logfile=` (stesso log continuo di prima, ma ora
+   anche collegabile). Nuovo `scripts/_qemu_serial_diag.py`: su rilevata
+   shell di recovery, si connette al socket, preme invio, invia un
+   comando che stampa crash report + coda del log Subiquity, salva
+   l'output accanto all'ISO. Best-effort, non blocca lo script se fallisce.
+
+5. **`xorriso` non rilevava un fallimento reale**: un run successivo ha
+   riportato "ISO generata" (`build-iso.sh` exit 0) ma il file non
+   esisteva. Causa root: lo scratchpad di questa sessione aveva
+   accumulato ~15GB di ISO di test precedenti mai ripulite, esaurendo lo
+   spazio disco disponibile; `xorriso` ha incontrato un problema di
+   severità FAILURE ("Image size ... exceeds free space on media",
+   "Image write cancelled") ma di default non traduce quella severità in
+   un exit code non-zero — lo script ha proseguito come se tutto fosse
+   andato bene. Fix: aggiunto `-abort_on FAILURE` all'invocazione
+   xorriso (ora un problema di quella severità fa fallire il processo,
+   intercettato da `set -e`) più un controllo indipendente che l'ISO
+   generata esista e non sia più piccola dell'ISO sorgente. Pulito anche
+   lo scratchpad.
+
+**Nota generale**: nessuno di questi 5 bug riguarda la correttezza della
+logica di partizionamento vera e propria (`storage.config`), che si è
+dimostrata corretta al primo run reale che ha avuto la possibilità di
+arrivarci (fix #3) — riguardano tutti l'infrastruttura di test
+(diagnostica, gestione spazio disco, rilevamento errori) attorno ad essa,
+scoperti proprio perché si è insistito a testare con hardware/rete reali
+invece di fermarsi al "sembra corretto sulla carta".
+
 ## Stato rispetto alla Definition of Done (issue #2)
 
 - [x] Sezione `storage` con partizione sistema + partizione dedicata
