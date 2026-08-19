@@ -58,7 +58,7 @@ equivalente per un nodo Grastorp.
 | 5 | Docker | Install da `get.docker.com`, config con runtime NVIDIA | Identico | **In corso** ([#5](https://github.com/danielesalpietro/kickstart-berlin/issues/5)) |
 | 6 | Rete | DHCP via Netplan, DNS pubblici, hostname | Identico, propedeutico al rilevamento NIC di Grastorp ([grastorp#11](https://github.com/danielesalpietro/grastorp/issues/11)); range di porte TCP+UDP aperto su ufw se attivo (guida ufficiale Vast.ai) | **In corso** ([#6](https://github.com/danielesalpietro/kickstart-berlin/issues/6)) |
 | 7 | Installazione daemon del provider | Wizard ufficiale Vast.ai (Kaalia daemon) + API key utente | **Sostituito**: qui va installato il backend/agent Grastorp stesso (Docker Compose), non un daemon di terzi | Da fare |
-| 8 | Raccolta info hardware | `dmidecode` + permessi sudo dedicati, usato per popolare il "machine info" del marketplace | **Riusato as-is**: stesso meccanismo alla base del node profiling di Grastorp ([grastorp#14](https://github.com/danielesalpietro/grastorp/issues/14)) | Da fare |
+| 8 | Raccolta info hardware | `dmidecode` + permessi sudo dedicati, usato per popolare il "machine info" del marketplace | **Riusato as-is**: stesso meccanismo alla base del node profiling di Grastorp ([grastorp#14](https://github.com/danielesalpietro/grastorp/issues/14)) — permessi sudo dedicati non necessari (l'admin ha già NOPASSWD completo) | **In corso** ([#8](https://github.com/danielesalpietro/kickstart-berlin/issues/8)) |
 | 9 | Manutenzione | Timer systemd per pulizia oraria container/immagini inutilizzati | Riusabile as-is | Da fare |
 | 10 | CLI del provider | Install CLI Vast.ai, config con API key | **Sostituito/opzionale**: solo se si integrano RunPod/Vast.ai come target di deploy remoto ([grastorp#15](https://github.com/danielesalpietro/grastorp/issues/15)), non è un prerequisito del nodo locale | Fuori scope iniziale |
 | 11 | Self-test/benchmark | Speedtest di rete + verifica GPU/RAM/rete, esito inviato al backend Vast.ai | **Sostituito**: qui è l'assessment one-shot di Grastorp (stile Windows Experience Index, vedi [grastorp#14](https://github.com/danielesalpietro/grastorp/issues/14)), non inviato a nessun backend esterno | Da fare |
@@ -237,6 +237,25 @@ equivalente per un nodo Grastorp.
   Grastorp, non ancora implementato); l'override IP non ha un requisito
   Grastorp concreto ad oggi; il test di velocità appartiene a Fase 11,
   non qui. Dettaglio in [`logbook-fase6.md`](logbook-fase6.md).
+
+## Fase 8 — raccolta informazioni hardware
+
+*(Fase 7, installazione backend/agent Grastorp, saltata per ora — su
+richiesta esplicita, non ancora implementata.)*
+
+- `postinstall/setup.sh` — nuova `phase8_hardware_info()`: raccoglie
+  `dmidecode` (system/baseboard/memory/processor), `lscpu`, `lspci`,
+  `lsblk`, info di rete e GPU (se presente) in uno snapshot JSON grezzo
+  (`/opt/kickstart-berlin/hardware-info.json`). Ogni fonte è isolata (uno
+  strumento mancante o fallito produce un errore solo in quel campo, non
+  fa fallire l'intera raccolta) — verificato in sandbox con `lspci`/`ip`/
+  `nvidia-smi` assenti: nessun crash, JSON comunque valido.
+- **"Riusato as-is"** dalla guida Vast.ai, con due adattamenti non
+  ambigui: i permessi sudo dedicati per `dmidecode` non servono (l'admin
+  ha già NOPASSWD completo dalla Fase 1); l'output è uno snapshot grezzo,
+  non lo schema "machine info" specifico di Grastorp (grastorp#14 non
+  ancora esaminata, fuori scope di questo repo) — un futuro backend potrà
+  trasformarlo. Dettaglio in [`logbook-fase8.md`](logbook-fase8.md).
 
 ## Riferimenti
 
