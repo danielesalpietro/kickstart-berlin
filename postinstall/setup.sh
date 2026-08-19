@@ -237,11 +237,63 @@ phase5_docker() {
   log "Fase 5 completata."
 }
 
+PORT_RANGE_START="__PORT_RANGE_START__"
+PORT_RANGE_END="__PORT_RANGE_END__"
+
+# Fase 6 (issue #6) — Rete: apertura del range di porte richiesto dalla
+# guida ufficiale Vast.ai (sezione "Network Setup"/"Port Requirements":
+# range continuo TCP+UDP, almeno 3 porte per GPU). Qui si copre solo la
+# parte che ha senso a livello di HOST, indipendente da quale agente la
+# userà: DHCP è già il default Ubuntu Server (nulla da fare), l'hostname
+# univoco è già gestito a install-time (vedi iso/user-data late-commands).
+#
+# Cosa NON è qui, deliberatamente:
+# - Il file di config vast.ai-specifico (/var/lib/vastai_kaalia/
+#   host_port_range) non ha un equivalente: quel path appartiene al loro
+#   daemon, che qui non installiamo (Fase 7 è sostituita dal backend/agent
+#   Grastorp, non ancora implementato) - quando esiste, sarà lui a leggere
+#   questo stesso range da config/autoinstall-defaults.json.
+# - L'override IP (host_ipaddr nella guida) non ha un caso d'uso Grastorp
+#   noto ad oggi - la guida stessa lo descrive come eccezione rara (NAT
+#   asimmetrici) - non implementato senza un requisito concreto.
+# - Il test di velocità di rete appartiene a Fase 11 (assessment one-shot,
+#   vedi README), non qui.
+phase6_network() {
+  log "Fase 6: apertura porte ${PORT_RANGE_START}-${PORT_RANGE_END} (TCP+UDP) ..."
+
+  if ! command -v ufw >/dev/null 2>&1; then
+    log "ufw non installato: nessun firewall da configurare, nulla da fare."
+    return 0
+  fi
+
+  if ! ufw status | grep -q "^Status: active"; then
+    log "ufw installato ma non attivo: non lo abilito (non tocco la postura" \
+      "firewall esistente dell'host) - range ${PORT_RANGE_START}-${PORT_RANGE_END}" \
+      "da aprire manualmente se/quando ufw verrà attivato."
+    return 0
+  fi
+
+  # Idempotente: ufw stesso non duplica una regola già presente, ma il
+  # controllo esplicito evita comunque rumore nei log ad ogni riavvio del
+  # servizio (la condition systemd previene la riesecuzione, ma lo script
+  # resta invocabile a mano per la DoD di idempotenza).
+  if ufw status | grep -q "${PORT_RANGE_START}:${PORT_RANGE_END}/tcp"; then
+    log "Regole ufw per ${PORT_RANGE_START}-${PORT_RANGE_END} già presenti."
+  else
+    ufw allow "${PORT_RANGE_START}:${PORT_RANGE_END}/tcp"
+    ufw allow "${PORT_RANGE_START}:${PORT_RANGE_END}/udp"
+    log "Regole ufw aggiunte per ${PORT_RANGE_START}-${PORT_RANGE_END} (TCP+UDP)."
+  fi
+
+  log "Fase 6 completata."
+}
+
 main() {
   phase3_docker_storage
   phase4_nvidia_driver
   phase5_docker
-  # Fasi successive (6-9, 12-14, issue #15) verranno aggiunte qui come
+  phase6_network
+  # Fasi successive (7-9, 12-14, issue #15) verranno aggiunte qui come
   # nuove funzioni, chiamate in ordine da main().
 }
 

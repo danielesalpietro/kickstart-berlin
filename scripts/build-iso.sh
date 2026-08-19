@@ -28,6 +28,8 @@ UBUNTU_VERSION=""
 SYSTEM_PARTITION_SIZE=""
 DISK_TOPOLOGY=""
 HOSTNAME_PREFIX=""
+PORT_RANGE_START=""
+PORT_RANGE_END=""
 DEV_SKIP_SECURITY_UPDATES=0
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
@@ -57,6 +59,9 @@ emit("DEFAULT_DATASTORE_LABEL", ds["label"])
 emit("DEFAULT_DATASTORE_MOUNT_ROOT", ds["mount_root"])
 emit("DEFAULT_DATASTORE_SYMLINK_NAME", ds["symlink_name"])
 emit("DEFAULT_HOSTNAME_PREFIX", d["identity"]["hostname_prefix"])
+net = d["network"]
+emit("DEFAULT_PORT_RANGE_START", net["port_range_start"])
+emit("DEFAULT_PORT_RANGE_END", net["port_range_end"])
 PYEOF
 )
 
@@ -64,6 +69,8 @@ UBUNTU_VERSION="$DEFAULT_UBUNTU_VERSION"
 SYSTEM_PARTITION_SIZE="$DEFAULT_SYSTEM_PARTITION_SIZE"
 DISK_TOPOLOGY="$DEFAULT_DISK_TOPOLOGY"
 HOSTNAME_PREFIX="$DEFAULT_HOSTNAME_PREFIX"
+PORT_RANGE_START="$DEFAULT_PORT_RANGE_START"
+PORT_RANGE_END="$DEFAULT_PORT_RANGE_END"
 
 usage() {
   cat <<EOF
@@ -111,6 +118,14 @@ Opzioni:
                              ISO puo' installare piu' nodi fisici diversi.
                              Default da config/autoinstall-defaults.json:
                              ${HOSTNAME_PREFIX}.
+      --port-range <S-E>     Range di porte TCP+UDP continuo da aprire su
+                             ufw (se attivo) per il traffico container
+                             (Fase 6, issue #6 — guida ufficiale Vast.ai,
+                             sezione "Port Requirements": almeno 3 porte
+                             per GPU, 100 per GPU come ideale). Formato
+                             "START-END", es. 16384-32768. Default da
+                             config/autoinstall-defaults.json:
+                             ${PORT_RANGE_START}-${PORT_RANGE_END}.
       --dev-skip-security-updates
                              SOLO sviluppo/test, MAI produzione: blocca
                              security.ubuntu.com nell'ambiente live (via
@@ -143,6 +158,11 @@ while [[ $# -gt 0 ]]; do
       esac
       shift 2 ;;
     --hostname-prefix) HOSTNAME_PREFIX="$2"; shift 2 ;;
+    --port-range)
+      [[ "$2" =~ ^([0-9]+)-([0-9]+)$ ]] || err "--port-range formato non valido: $2 (atteso START-END, es. 16384-32768)"
+      PORT_RANGE_START="${BASH_REMATCH[1]}"
+      PORT_RANGE_END="${BASH_REMATCH[2]}"
+      shift 2 ;;
     --dev-skip-security-updates) DEV_SKIP_SECURITY_UPDATES=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) err "Opzione sconosciuta: $1 (vedi --help)" ;;
@@ -170,6 +190,14 @@ fi
 
 [[ "$HOSTNAME_PREFIX" =~ ^[a-z][a-z0-9-]*$ ]] \
   || err "--hostname-prefix non valido: ${HOSTNAME_PREFIX} (deve iniziare con una lettera minuscola, poi solo minuscole/cifre/trattini)"
+
+for p in "$PORT_RANGE_START" "$PORT_RANGE_END"; do
+  (( p >= 1 && p <= 65535 )) || err "--port-range: ${p} fuori dal range di porte valido (1-65535)"
+done
+(( PORT_RANGE_START < PORT_RANGE_END )) \
+  || err "--port-range: l'inizio (${PORT_RANGE_START}) deve essere minore della fine (${PORT_RANGE_END})"
+(( PORT_RANGE_END - PORT_RANGE_START >= 2 )) \
+  || err "--port-range: range troppo stretto (${PORT_RANGE_START}-${PORT_RANGE_END}), la guida ufficiale Vast.ai richiede almeno 3 porte per GPU"
 
 [[ -z "$OUTPUT_ISO" ]] && OUTPUT_ISO="${REPO_ROOT}/build/kickstart-berlin-${UBUNTU_VERSION}-autoinstall.iso"
 mkdir -p "$(dirname "$OUTPUT_ISO")"
@@ -310,6 +338,8 @@ mkdir -p "$POSTINSTALL_STAGE"
 sed \
     -e "s|__DATASTORE_MOUNT_ROOT__|${DEFAULT_DATASTORE_MOUNT_ROOT}|g" \
     -e "s|__DATASTORE_SYMLINK_NAME__|${DEFAULT_DATASTORE_SYMLINK_NAME}|g" \
+    -e "s|__PORT_RANGE_START__|${PORT_RANGE_START}|g" \
+    -e "s|__PORT_RANGE_END__|${PORT_RANGE_END}|g" \
     "${REPO_ROOT}/postinstall/setup.sh" \
   > "${POSTINSTALL_STAGE}/setup.sh"
 cp "${REPO_ROOT}/postinstall/kickstart-berlin-postinstall.service" "${POSTINSTALL_STAGE}/"
