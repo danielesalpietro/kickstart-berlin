@@ -126,6 +126,7 @@ fi
 
 SERIAL_LOG="${WORK_DIR}/serial.log"
 SERIAL_SOCK="${WORK_DIR}/serial.sock"
+QEMU_STDERR_LOG="${WORK_DIR}/qemu-stderr.log"
 : > "$SERIAL_LOG"
 
 log "Avvio QEMU (ISO: ${ISO}, RAM: ${MEMORY_MB}MB, dischi: ${NUM_DISKS}) ..."
@@ -146,7 +147,7 @@ qemu-system-x86_64 \
   -cdrom "$ISO" \
   "${DISK_ARGS[@]}" \
   -netdev "user,id=net0,hostfwd=tcp::${SSH_PORT}-:22" -device virtio-net-pci,netdev=net0 \
-  >/dev/null 2>&1 &
+  >"$QEMU_STDERR_LOG" 2>&1 &
 QEMU_PID=$!
 
 log "QEMU avviato (pid ${QEMU_PID}). Attendo il completamento dell'autoinstall e il"
@@ -162,7 +163,15 @@ while true; do
     break
   fi
   if ! kill -0 "$QEMU_PID" 2>/dev/null; then
-    err "QEMU è terminato inaspettatamente prima del timeout (vedi ${SERIAL_LOG})"
+    # WORK_DIR (e quindi SERIAL_LOG/QEMU_STDERR_LOG) sparisce col trap di
+    # cleanup non appena lo script esce: senza questa copia, "err" qui sotto
+    # avrebbe lasciato solo un percorso puntato a file già rimossi (scoperto
+    # perdendo la diagnostica di un crash QEMU reale durante la Fase 3).
+    cp "$SERIAL_LOG" "${ISO}.serial.log" 2>/dev/null || true
+    cp "$QEMU_STDERR_LOG" "${ISO}.qemu-stderr.log" 2>/dev/null || true
+    log "--- stderr di QEMU (log completo: ${ISO}.qemu-stderr.log) ---"
+    tail -n 50 "$QEMU_STDERR_LOG" 2>/dev/null || true
+    err "QEMU è terminato inaspettatamente prima del timeout (log seriale: ${ISO}.serial.log, stderr QEMU: ${ISO}.qemu-stderr.log)"
   fi
   if (( ELAPSED - LAST_HEARTBEAT >= 120 )); then
     LAST_HEARTBEAT=$ELAPSED
@@ -204,6 +213,7 @@ if [[ "$SSH_OK" != "1" ]]; then
   # (insufficiente per errori tardivi, es. nei late-commands).
   PERSISTED_LOG="${ISO}.serial.log"
   cp "$SERIAL_LOG" "$PERSISTED_LOG" 2>/dev/null || true
+  cp "$QEMU_STDERR_LOG" "${ISO}.qemu-stderr.log" 2>/dev/null || true
   log "--- ultime 200 righe della console seriale (log completo: ${PERSISTED_LOG}) ---"
   tail -n 200 "$SERIAL_LOG" || true
   err "timeout: impossibile completare l'autoinstall e connettersi via SSH entro ${TIMEOUT}s"
