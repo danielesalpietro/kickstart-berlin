@@ -57,7 +57,7 @@ equivalente per un nodo Grastorp.
 | 1 | Sistema operativo | Ubuntu Server 22.04/24.04 da ISO ufficiale | Stessa base OS, via `autoinstall` invece di installazione manuale interattiva | **Fatto** ([#1](https://github.com/danielesalpietro/kickstart-berlin/issues/1)) |
 | 2 | Partizionamento disco | `/` ext4 (~100GB) + resto disco separato (xfs, non montato) | Stesso schema: partizione di sistema + partizione dedicata allo storage (Datastore Grastorp) | **In corso** ([#2](https://github.com/danielesalpietro/kickstart-berlin/issues/2)) |
 | 3 | Preparazione storage | Estensione LVM, rimozione loopback Docker, dati Docker sul filesystem principale | Adattato: nessuna estensione LVM (non prevista dalla guida ufficiale Vast.ai, seguita strettamente — vedi `logbook-fase3.md`), Docker configurato sul Datastore ESX-style con symlink di compatibilità da `/var/lib/docker` | **In corso** ([#3](https://github.com/danielesalpietro/kickstart-berlin/issues/3)) |
-| 4 | Driver NVIDIA + Container Toolkit | Driver pinnato (es. 535) + NVIDIA Container Toolkit da repo ufficiale | Identico: prerequisito già documentato nel README di Grastorp | Da fare |
+| 4 | Driver NVIDIA + Container Toolkit | Driver pinnato (es. 535) + NVIDIA Container Toolkit da repo ufficiale | Adattato: nessuna versione pinnata (non richiesta dalla guida ufficiale Vast.ai, seguita strettamente — vedi `logbook-fase4.md`), driver auto-rilevato via `ubuntu-drivers autoinstall` | **In corso** ([#4](https://github.com/danielesalpietro/kickstart-berlin/issues/4)) |
 | 5 | Docker | Install da `get.docker.com`, config con runtime NVIDIA | Identico | Da fare |
 | 6 | Rete | DHCP via Netplan, DNS pubblici, hostname | Identico, propedeutico al rilevamento NIC di Grastorp ([grastorp#11](https://github.com/danielesalpietro/grastorp/issues/11)) | Da fare |
 | 7 | Installazione daemon del provider | Wizard ufficiale Vast.ai (Kaalia daemon) + API key utente | **Sostituito**: qui va installato il backend/agent Grastorp stesso (Docker Compose), non un daemon di terzi | Da fare |
@@ -175,6 +175,34 @@ equivalente per un nodo Grastorp.
 - `scripts/boot-test-qemu.sh` verifica, dopo il login SSH, che il
   servizio post-install completi e che `/var/lib/docker`/`daemon.json`
   risultino coerenti col Datastore.
+
+## Fase 4 — driver NVIDIA + NVIDIA Container Toolkit
+
+- `postinstall/setup.sh` — nuova `phase4_nvidia_driver()`: rileva la
+  presenza di una GPU NVIDIA (PCI vendor `0x10de`), salta la fase
+  pulitamente se assente (nodo non-GPU). Se presente, installa il driver
+  via `ubuntu-drivers autoinstall` (nessuna versione pinnata — vedi
+  sotto), blocca gli aggiornamenti automatici del driver (`apt-mark
+  hold`, previene mismatch NVML segnalato dalla guida ufficiale), gestisce
+  il riavvio necessario per caricare il modulo kernel in modo idempotente
+  (un solo riavvio automatico, mai un loop), poi installa il pacchetto
+  NVIDIA Container Toolkit dal repository ufficiale.
+- **Nessuna versione driver pinnata**: la guida host-setup ufficiale di
+  Vast.ai non la richiede ("we don't require a specific version") — stesso
+  disallineamento già trovato per l'LVM di Fase 3 tra il testo originale
+  dell'issue e la guida ufficiale. Dettaglio della decisione in
+  [`logbook-fase4.md`](logbook-fase4.md).
+- **Configurazione del runtime Docker non qui**: `nvidia-ctk runtime
+  configure --runtime=docker` richiede Docker già installato (Fase 5, non
+  Fase 4) — andrà nella futura `phase5_docker()`.
+- **Limite noto**: nessuna GPU disponibile per la validazione end-to-end
+  in questa fase di sviluppo (Z8 non disponibile fino al 23/08, VM Azure
+  usata per Fase 2/3 senza GPU) — verificato solo il percorso "nessuna
+  GPU rilevata" e la sintassi; il Container Toolkit non è stato testabile
+  nemmeno per i soli comandi di rete (repository `nvidia.github.io`
+  bloccato dalla policy del sandbox di sviluppo, stesso tipo di
+  restrizione già vista per `docs.vast.ai` in Fase 1). Vedi
+  [`logbook-fase4.md`](logbook-fase4.md) per lo stato aggiornato.
 
 ## Riferimenti
 
