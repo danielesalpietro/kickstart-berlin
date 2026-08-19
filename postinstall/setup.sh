@@ -105,9 +105,105 @@ PYEOF
   log "Fase 3 completata."
 }
 
+NVIDIA_REBOOT_MARKER="/opt/kickstart-berlin/.phase4-nvidia-reboot-attempted"
+
+# Vero solo se e' presente almeno un device PCI NVIDIA (vendor id 0x10de,
+# lettura diretta da sysfs invece di dipendere da pciutils/lspci, non
+# garantito installato su un Ubuntu Server minimale).
+_phase4_gpu_present() {
+  local vendor_file
+  for vendor_file in /sys/bus/pci/devices/*/vendor; do
+    [[ -r "$vendor_file" ]] || continue
+    [[ "$(cat "$vendor_file")" == "0x10de" ]] && return 0
+  done
+  return 1
+}
+
+# Fase 4 (issue #4) — Driver NVIDIA + NVIDIA Container Toolkit. Segue la
+# guida host-setup ufficiale di Vast.ai ("Install NVIDIA GPU Driver &
+# CUDA"): nessuna versione di driver è imposta ("we don't require a
+# specific version... using the latest CUDA-supported driver is
+# recommended") — a differenza del testo originale dell'issue #4/README
+# ("driver pinnato, es. 535", ereditato dallo script community come già
+# successo per l'LVM di Fase 3, non dalla guida ufficiale). Qui si usa
+# `ubuntu-drivers autoinstall`: rileva la GPU installata e sceglie il
+# driver raccomandato da Ubuntu, senza versione hardcoded — decisione
+# presa con l'utente, vedi logbook-fase4.md.
+#
+# Il "runtime configure --runtime=docker" del NVIDIA Container Toolkit
+# NON viene fatto qui: Docker non è ancora installato a questo punto
+# della sequenza (Fase 5, non Fase 4 — vedi README, dove "config con
+# runtime NVIDIA" è esplicitamente descritto sotto Fase 5). Qui si
+# installa solo il pacchetto nvidia-container-toolkit; la configurazione
+# del runtime Docker va nella futura phase5_docker().
+phase4_nvidia_driver() {
+  log "Fase 4: driver NVIDIA + NVIDIA Container Toolkit ..."
+
+  if ! _phase4_gpu_present; then
+    log "Nessuna GPU NVIDIA rilevata (PCI vendor 0x10de): host non-GPU, fase 4 saltata."
+    return 0
+  fi
+
+  if ! command -v nvidia-smi >/dev/null 2>&1 || ! nvidia-smi -q >/dev/null 2>&1; then
+    if [[ -f "$NVIDIA_REBOOT_MARKER" ]]; then
+      err "Driver NVIDIA installato ma nvidia-smi non funziona dopo un riavvio: intervento manuale necessario (vedi ${NVIDIA_REBOOT_MARKER})."
+    fi
+
+    log "Driver NVIDIA non ancora funzionante: installo (ubuntu-drivers autoinstall) ..."
+    apt-get update -qq
+    apt-get install -y ubuntu-drivers-common
+    ubuntu-drivers autoinstall
+
+    # Guida ufficiale Vast.ai, sezione "Disable Auto Updates": un upgrade
+    # automatico del driver puo' disallineare il modulo kernel caricato
+    # dalla libreria NVML usata da nvidia-smi/nvidia-docker (mismatch
+    # NVML), causando deverifica automatica della macchina. "hold" su
+    # tutti i pacchetti nvidia-* installati, non solo il driver
+    # principale: un upgrade parziale di un pacchetto correlato
+    # (nvidia-dkms-*, libnvidia-*, ...) puo' causare lo stesso mismatch.
+    mapfile -t nvidia_pkgs < <(dpkg-query -W -f='${Package}\n' 'nvidia-*' 2>/dev/null)
+    if [[ ${#nvidia_pkgs[@]} -gt 0 ]]; then
+      apt-mark hold "${nvidia_pkgs[@]}"
+    fi
+
+    # Il modulo kernel del driver appena installato (DKMS) non e' ancora
+    # caricato nel kernel in esecuzione: serve un riavvio prima che
+    # nvidia-smi funzioni. Il marker precede il riavvio cosi' che, se lo
+    # unit systemd non arriva a scrivere /opt/kickstart-berlin/
+    # .setup-complete (il riavvio interrompe lo script prima del suo
+    # normale exit, vedi kickstart-berlin-postinstall.service), il
+    # prossimo boot riesegue lo script da capo (idempotente: fase 3 e
+    # l'installazione driver sono no-op) e a quel punto verifica
+    # nvidia-smi invece di reinstallare — un solo riavvio automatico,
+    # mai un loop: il marker sopra impedisce un secondo tentativo.
+    touch "$NVIDIA_REBOOT_MARKER"
+    log "Driver installato: riavvio necessario per caricare il modulo kernel ..."
+    reboot
+    exit 0
+  fi
+
+  log "Driver NVIDIA attivo: $(nvidia-smi --query-gpu=name,driver_version --format=csv,noheader | head -n1)"
+
+  if ! command -v nvidia-ctk >/dev/null 2>&1; then
+    log "Installo NVIDIA Container Toolkit ..."
+    curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+      | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+    curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+      | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
+      > /etc/apt/sources.list.d/nvidia-container-toolkit.list
+    apt-get update -qq
+    apt-get install -y nvidia-container-toolkit
+  else
+    log "NVIDIA Container Toolkit già installato."
+  fi
+
+  log "Fase 4 completata."
+}
+
 main() {
   phase3_docker_storage
-  # Fasi successive (4-9, 12-14, issue #15) verranno aggiunte qui come
+  phase4_nvidia_driver
+  # Fasi successive (5-9, 12-14, issue #15) verranno aggiunte qui come
   # nuove funzioni, chiamate in ordine da main().
 }
 
