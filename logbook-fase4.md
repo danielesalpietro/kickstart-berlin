@@ -132,12 +132,52 @@ e confermato):
   vedi discussione con l'utente su Azure/RunPod/Scaleway/DataPacket in
   questa sessione).
 
+## 2026-08-20 — Comandi Container Toolkit verificati su rete diretta (VM Azure)
+
+Branch aggiornato prima di procedere: `claude/fase4-nvidia-driver-toolkit`
+era stato creato a partire da un punto di Fase 3 non ancora definitivo
+(mancava il commit `08d4871`, hardening `datasource_list`/fix leak
+hostname test) — mergiato `develop` (dopo il merge della PR #18 di Fase
+3) nel branch Fase 4, nessun conflitto.
+
+Eseguiti a mano, uno per uno, esattamente i comandi di
+`phase4_nvidia_driver()` relativi al Container Toolkit (non l'intero
+`postinstall/setup.sh`: la funzione salta l'intera fase se non rileva una
+GPU, e questa VM Azure non ne ha una — verifica mirata solo alla parte
+raggiungibilità rete/repo, non al percorso driver+GPU) sull'host VM-TEST2
+(rete diretta, nessuna restrizione di sandbox):
+
+1. `curl https://nvidia.github.io/libnvidia-container/gpgkey` → `200`,
+   3195 byte, blocco PGP valido (confermato anche `gpg --dearmor`
+   riuscito senza errori).
+2. `curl https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list`
+   → `200`, contenuto atteso (`deb [...] https://nvidia.github.io/...`).
+3. Repo aggiunto (`sed` con `signed-by`, stessa trasformazione esatta
+   dello script) + `apt-get update`: pulito, nessun errore, catalogo
+   pacchetti raggiunto (`apt-cache policy` mostra tutte le versioni
+   disponibili, candidate `1.20.0-1`).
+4. `apt-get install -y nvidia-container-toolkit`: **riuscito, exit 0**.
+   `nvidia-ctk --version` → `NVIDIA Container Toolkit CLI version
+   1.20.0`, conferma diretta che il pacchetto installato è funzionante
+   (al netto della configurazione runtime Docker, che nello script resta
+   volutamente rimandata alla Fase 5).
+
+**Il blocco di rete del sandbox era l'unico ostacolo**: nessun bug nella
+logica dello script, nessuna modifica necessaria a
+`postinstall/setup.sh`. Pulizia post-test: pacchetto e repo rimossi
+dall'host VM-TEST2 (non è un requisito permanente di quella VM).
+
+**Resta non verificabile qui** (nessuna GPU su questa VM): se
+`ubuntu-drivers autoinstall` seleziona un driver funzionante, se il
+modulo kernel carica dopo il riavvio, se `nvidia-smi` risponde, se un
+container vede davvero la GPU — richiede hardware NVIDIA reale (Z8,
+disponibile dal 23/08, o un'istanza GPU cloud dedicata).
+
 ## Prossimi passi
 
-- [ ] Testare su VM Azure (rete diretta, senza GPU): confermare che i
+- [x] Testare su VM Azure (rete diretta, senza GPU): confermare che i
       comandi di aggiunta repository + installazione pacchetto del
-      NVIDIA Container Toolkit funzionino davvero (non solo "sembrano
-      corretti sulla documentazione").
+      NVIDIA Container Toolkit funzionino davvero — **confermato sopra**.
 - [ ] Testare il percorso completo (driver + riavvio + `nvidia-smi` +
       Container Toolkit funzionante) su hardware con GPU NVIDIA reale —
       Z8 quando disponibile (23/08), o istanza GPU cloud dedicata se si
@@ -145,7 +185,6 @@ e confermato):
       Pod containerizzati con driver già gestito dall'host, non adatto a
       testare la nostra installazione da zero — vedi discussione in
       sessione).
-- [ ] Aprire la PR quando: verificato il Container Toolkit su rete
-      diretta, e idealmente (non bloccante per la PR, ma per la DoD
-      completa dell'issue #4) confermato il percorso driver+GPU su
-      hardware reale.
+- [ ] Aprire la PR quando: verificato il percorso driver+GPU su hardware
+      reale (unico punto ancora aperto della DoD completa dell'issue #4;
+      il Container Toolkit su rete diretta è ora confermato).
