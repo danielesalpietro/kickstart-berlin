@@ -288,13 +288,79 @@ phase6_network() {
   log "Fase 6 completata."
 }
 
+HARDWARE_INFO_FILE="/opt/kickstart-berlin/hardware-info.json"
+
+# Fase 8 (issue #8) — Raccolta informazioni hardware, "riusata as-is"
+# dalla guida Vast.ai (dmidecode + permessi sudo dedicati, usato per
+# popolare il "machine info" del proprio marketplace) — qui alimenta
+# invece il node profiling di Grastorp (grastorp#14). Il "permesso sudo
+# dedicato" di Vast.ai per dmidecode non serve qui: l'account admin ha
+# già sudo NOPASSWD completo (Fase 1, iso/user-data late-commands) — un
+# permesso più stretto sarebbe una restrizione IN PIÙ rispetto a quanto
+# già garantito, non richiesta da alcun requisito di sicurezza noto per
+# questo progetto.
+#
+# Fase 7 (installazione daemon/backend Grastorp) è saltata per ora
+# (non ancora implementata) — questa fase non dipende dal suo codice,
+# solo raccoglie dati grezzi che un futuro backend potrà consumare.
+#
+# Output: snapshot JSON grezzo (dmidecode/lscpu/lspci/lsblk/rete/GPU),
+# non lo schema "machine info" specifico di Grastorp — non noto qui,
+# grastorp#14 lo definirà quando il backend esisterà. Idempotente per
+# costruzione: sola lettura, ogni esecuzione riscrive lo snapshot più
+# recente, nessuno stato da preservare tra esecuzioni.
+phase8_hardware_info() {
+  log "Fase 8: raccolta informazioni hardware ..."
+
+  if ! command -v dmidecode >/dev/null 2>&1; then
+    apt-get update -qq
+    apt-get install -y dmidecode
+  fi
+
+  mkdir -p "$(dirname "$HARDWARE_INFO_FILE")"
+
+  python3 - "$HARDWARE_INFO_FILE" <<'PYEOF'
+import json
+import subprocess
+import sys
+
+
+def run(cmd):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=30).stdout.strip()
+    except Exception as exc:
+        return f"<errore: {exc}>"
+
+
+info = {
+    "dmidecode_system": run(["dmidecode", "-t", "system"]),
+    "dmidecode_baseboard": run(["dmidecode", "-t", "baseboard"]),
+    "dmidecode_memory": run(["dmidecode", "-t", "memory"]),
+    "dmidecode_processor": run(["dmidecode", "-t", "processor"]),
+    "cpu": run(["lscpu"]),
+    "pci": run(["lspci"]),
+    "block_devices": run(["lsblk", "-o", "NAME,SIZE,TYPE,MODEL"]),
+    "network": run(["ip", "-brief", "addr"]),
+    "nvidia_gpu": run(["nvidia-smi", "--query-gpu=name,memory.total,driver_version", "--format=csv,noheader"]),
+}
+
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    json.dump(info, f, indent=2)
+    f.write("\n")
+PYEOF
+
+  log "Informazioni hardware salvate in ${HARDWARE_INFO_FILE}."
+  log "Fase 8 completata."
+}
+
 main() {
   phase3_docker_storage
   phase4_nvidia_driver
   phase5_docker
   phase6_network
-  # Fasi successive (7-9, 12-14, issue #15) verranno aggiunte qui come
-  # nuove funzioni, chiamate in ordine da main().
+  phase8_hardware_info
+  # Fase 7 e 9, 12-14 (issue #15) verranno aggiunte qui come nuove
+  # funzioni, chiamate in ordine da main(), quando implementate.
 }
 
 main "$@"
