@@ -58,7 +58,7 @@ equivalente per un nodo Grastorp.
 | 2 | Partizionamento disco | `/` ext4 (~100GB) + resto disco separato (xfs, non montato) | Stesso schema: partizione di sistema + partizione dedicata allo storage (Datastore Grastorp) | **In corso** ([#2](https://github.com/danielesalpietro/kickstart-berlin/issues/2)) |
 | 3 | Preparazione storage | Estensione LVM, rimozione loopback Docker, dati Docker sul filesystem principale | Adattato: nessuna estensione LVM (non prevista dalla guida ufficiale Vast.ai, seguita strettamente — vedi `logbook-fase3.md`), Docker configurato sul Datastore ESX-style con symlink di compatibilità da `/var/lib/docker` | **In corso** ([#3](https://github.com/danielesalpietro/kickstart-berlin/issues/3)) |
 | 4 | Driver NVIDIA + Container Toolkit | Driver pinnato (es. 535) + NVIDIA Container Toolkit da repo ufficiale | Adattato: nessuna versione pinnata (non richiesta dalla guida ufficiale Vast.ai, seguita strettamente — vedi `logbook-fase4.md`), driver auto-rilevato via `ubuntu-drivers autoinstall` | **In corso** ([#4](https://github.com/danielesalpietro/kickstart-berlin/issues/4)) |
-| 5 | Docker | Install da `get.docker.com`, config con runtime NVIDIA | Identico | Da fare |
+| 5 | Docker | Install da `get.docker.com`, config con runtime NVIDIA | Identico | **In corso** ([#5](https://github.com/danielesalpietro/kickstart-berlin/issues/5)) |
 | 6 | Rete | DHCP via Netplan, DNS pubblici, hostname | Identico, propedeutico al rilevamento NIC di Grastorp ([grastorp#11](https://github.com/danielesalpietro/grastorp/issues/11)) | Da fare |
 | 7 | Installazione daemon del provider | Wizard ufficiale Vast.ai (Kaalia daemon) + API key utente | **Sostituito**: qui va installato il backend/agent Grastorp stesso (Docker Compose), non un daemon di terzi | Da fare |
 | 8 | Raccolta info hardware | `dmidecode` + permessi sudo dedicati, usato per popolare il "machine info" del marketplace | **Riusato as-is**: stesso meccanismo alla base del node profiling di Grastorp ([grastorp#14](https://github.com/danielesalpietro/grastorp/issues/14)) | Da fare |
@@ -203,6 +203,24 @@ equivalente per un nodo Grastorp.
   bloccato dalla policy del sandbox di sviluppo, stesso tipo di
   restrizione già vista per `docs.vast.ai` in Fase 1). Vedi
   [`logbook-fase4.md`](logbook-fase4.md) per lo stato aggiornato.
+
+## Fase 5 — Docker + runtime NVIDIA
+
+- `postinstall/setup.sh` — nuova `phase5_docker()`: installa Docker
+  (script di convenienza `get.docker.com`, idempotente), poi configura il
+  runtime NVIDIA (`nvidia-ctk runtime configure --runtime=docker`) solo
+  se il Container Toolkit di Fase 4 è presente (host con GPU) — su un
+  host non-GPU questo passaggio viene saltato pulitamente.
+- **Nessun disallineamento con la guida ufficiale da risolvere** qui (a
+  differenza di Fase 3/4): la guida Vast.ai non descrive comandi
+  espliciti per questo passaggio (nascosto nel proprio installer
+  proprietario), quindi si segue la pratica standard Docker.
+- **Limite noto**: `get.docker.com` è bloccato dalla policy di rete del
+  sandbox di sviluppo (stessa restrizione già vista per `docs.vast.ai` e
+  `nvidia.github.io`) — l'installazione Docker vera non è stata testata
+  qui, così come l'interazione tra `nvidia-ctk runtime configure` e il
+  `data-root` già scritto da Fase 3 in `daemon.json`. Vedi
+  [`logbook-fase5.md`](logbook-fase5.md).
 
 ## Riferimenti
 

@@ -200,10 +200,48 @@ phase4_nvidia_driver() {
   log "Fase 4 completata."
 }
 
+# Fase 5 (issue #5) — Docker + config runtime NVIDIA. La guida ufficiale
+# Vast.ai non descrive comandi espliciti per questo passaggio (nascosto
+# nel proprio installer proprietario, come già notato per il Container
+# Toolkit in Fase 4): si segue quindi la pratica standard Docker
+# (script di convenienza get.docker.com, come da README) invece di una
+# fonte vast.ai-specific da cui questo passaggio non è ricavabile.
+#
+# "nvidia-ctk runtime configure" (rimandato da phase4_nvidia_driver: lì
+# Docker non esiste ancora) fa un merge nel daemon.json esistente, non lo
+# sovrascrive - dovrebbe convivere con la chiave "data-root" scritta da
+# phase3_docker_storage, ma il merge esatto non è verificabile qui
+# (nvidia-ctk non installabile in questo sandbox, vedi phase4_nvidia_driver
+# e logbook-fase4.md) - da confermare appena disponibile un host dove il
+# Container Toolkit installa davvero.
+phase5_docker() {
+  log "Fase 5: installazione Docker ..."
+
+  if command -v docker >/dev/null 2>&1; then
+    log "Docker già installato."
+  else
+    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+    sh /tmp/get-docker.sh
+    rm -f /tmp/get-docker.sh
+    systemctl enable --now docker
+  fi
+
+  if command -v nvidia-ctk >/dev/null 2>&1; then
+    log "Configuro il runtime NVIDIA per Docker ..."
+    nvidia-ctk runtime configure --runtime=docker
+    systemctl restart docker
+  else
+    log "NVIDIA Container Toolkit non presente (host non-GPU o Fase 4 non eseguita): salto la config del runtime."
+  fi
+
+  log "Fase 5 completata."
+}
+
 main() {
   phase3_docker_storage
   phase4_nvidia_driver
-  # Fasi successive (5-9, 12-14, issue #15) verranno aggiunte qui come
+  phase5_docker
+  # Fasi successive (6-9, 12-14, issue #15) verranno aggiunte qui come
   # nuove funzioni, chiamate in ordine da main().
 }
 
