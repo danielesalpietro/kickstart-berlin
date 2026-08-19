@@ -7,8 +7,16 @@ seriale mostra "An error occurred. Press enter to start a shell"
 install_fail). La sola trace ad alto livello che Subiquity scrive di
 norma sulla console (righe "start:"/"finish:") non include il traceback
 reale dell'errore: questo script si collega al socket UNIX della console
-seriale QEMU (chardev "socket"), preme invio per attivare la shell e
-raccoglie l'eventuale crash report e la coda del log di Subiquity.
+seriale QEMU (chardev "socket"), attiva la shell e raccoglie l'eventuale
+crash report e la coda del log di Subiquity.
+
+Comandi inviati uno alla volta (non concatenati con ";"): un primo
+tentativo con un unico comando lungo concatenato ha prodotto solo l'eco
+del testo digitato senza alcun output reale, con l'ipotesi che il testo
+sia arrivato mentre la shell di recovery era ancora a metà della propria
+inizializzazione (bracketed-paste-mode, prompt) — comandi separati con
+attese più larghe tra un invio e l'altro riducono il rischio di quella
+corsa critica.
 
 Uso: _qemu_serial_diag.py <path-socket> <path-output>
 """
@@ -18,10 +26,10 @@ import socket
 import sys
 import time
 
-MARKER = "___KB_DIAG___"
 
-
-def recv_all(sock: socket.socket) -> bytes:
+def drain(sock: socket.socket, idle_timeout: float = 3.0) -> bytes:
+    """Legge tutto quello che arriva finché non c'è silenzio per idle_timeout secondi."""
+    sock.settimeout(idle_timeout)
     data = b""
     try:
         while True:
@@ -32,6 +40,12 @@ def recv_all(sock: socket.socket) -> bytes:
     except TimeoutError:
         pass
     return data
+
+
+def run_command(sock: socket.socket, cmd: str, settle: float = 8.0) -> bytes:
+    sock.sendall((cmd + "\n").encode())
+    time.sleep(settle)
+    return drain(sock)
 
 
 def main() -> None:
@@ -45,27 +59,23 @@ def main() -> None:
     s.settimeout(10)
     s.connect(sock_path)
 
-    # Invio prima un invio a vuoto per attivare il prompt della shell di
-    # recovery, poi scarto quanto ricevuto (banner/prompt) prima di
-    # inviare il comando diagnostico vero e proprio.
-    s.sendall(b"\n")
-    time.sleep(3)
-    recv_all(s)
+    # Due invii a vuoto separati (non uno solo) per dare tempo alla shell
+    # di recovery di completare la propria inizializzazione (prompt,
+    # bracketed paste mode) prima di considerarla pronta a ricevere
+    # comandi reali.
+    run_command(s, "", settle=5)
+    run_command(s, "", settle=3)
 
-    cmd = (
-        f"echo {MARKER}; "
-        "cat /var/crash/*.crash 2>&1; "
-        "echo ---SUBIQUITY-SERVER-DEBUG-LOG-TAIL---; "
-        "tail -c 20000 /var/log/installer/subiquity-server-debug.log 2>&1; "
-        f"echo {MARKER}\n"
-    )
-    s.sendall(cmd.encode())
-    time.sleep(5)
-    data = recv_all(s)
+    sections = [
+        run_command(s, "cat /var/crash/*.crash 2>&1"),
+        b"\n---SUBIQUITY-SERVER-DEBUG-LOG-TAIL---\n",
+        run_command(s, "tail -c 20000 /var/log/installer/subiquity-server-debug.log 2>&1"),
+    ]
     s.close()
 
     with open(out_path, "wb") as f:
-        f.write(data)
+        for section in sections:
+            f.write(section)
 
 
 if __name__ == "__main__":
