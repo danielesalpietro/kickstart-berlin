@@ -269,6 +269,20 @@ log "Avvio QEMU (ISO: ${ISO}, RAM: ${MEMORY_MB}MB, dischi: ${NUM_DISKS}) ..."
 # shell di recovery di Subiquity (vedi scripts/_qemu_serial_diag.py) — la
 # sola trace ad alto livello sulla console non include mai il traceback
 # reale di un errore.
+#
+# "hostname=" esplicito sul netdev: senza, il DHCP integrato di
+# QEMU/SLIRP offre al guest, come opzione 12, l'hostname del PROCESSO
+# QEMU stesso (cioè dell'host che esegue il test) - su un host cloud con
+# un hostname reale (es. "VM-TEST2" su Azure), un client DHCP nel guest
+# che accetta l'opzione (comportamento di default di systemd-networkd)
+# sovrascrive l'hostname <prefisso>-XXXX generato a install-time dal
+# nostro late-command con quello dell'host - intermittente perché
+# dipende dal timing della negoziazione DHCP rispetto al boot. Scoperto
+# durante lo sviluppo del fix hostname (Fase 3): "VM-TEST2" comparso al
+# posto di berlin-XXXX in 3 run su 5. Non è un bug della logica
+# autoinstall, è specifico dell'infrastruttura di test QEMU/SLIRP
+# (nessun DHCP-hostname-leak possibile su hardware bare-metal reale, il
+# target effettivo) - vedi logbook-fase3.md.
 qemu-system-x86_64 \
   "${KVM_ARGS[@]}" \
   "${UEFI_ARGS[@]}" \
@@ -280,7 +294,7 @@ qemu-system-x86_64 \
   -boot once=d \
   -cdrom "$ISO" \
   "${DISK_ARGS[@]}" \
-  -netdev "user,id=net0,hostfwd=tcp::${SSH_PORT}-:22" -device virtio-net-pci,netdev=net0 \
+  -netdev "user,id=net0,hostfwd=tcp::${SSH_PORT}-:22,hostname=boot-test-client" -device virtio-net-pci,netdev=net0 \
   >"$QEMU_STDERR_LOG" 2>&1 &
 QEMU_PID=$!
 
