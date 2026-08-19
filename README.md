@@ -5,9 +5,15 @@ boot fino a un host pronto (OS, driver NVIDIA, Docker, rete, benchmark
 hardware). Base derivata dal flusso di setup host di **Vast.ai**, propedeutica
 all'integrazione in [Grastorp](https://github.com/danielesalpietro/grastorp).
 
-> Stato: **early stage**. Fase 1 (ISO autoinstall) implementata, vedi
-> [`iso/`](iso/), [`scripts/`](scripts/) e [`docs/usb-boot.md`](docs/usb-boot.md).
-> Le altre fasi sono ancora da fare.
+> Stato: **early stage**. Fase 1 (ISO autoinstall) completa e validata
+> end-to-end (CI + hardware reale). Fase 2 (partizionamento disco +
+> Datastore) implementata e validata su hardware reale per lo scenario a
+> 2 dischi (install completa senza errori, incluso il mount del
+> Datastore); resta da confermare in modo affidabile il rientro SSH dopo
+> il reboot nell'ambiente di test Hyper-V (probabile problema
+> d'infrastruttura di test, non della logica d'installazione — vedi
+> [`logbook-fase2.md`](logbook-fase2.md)). Le altre fasi sono ancora da
+> fare.
 
 ## Perché
 
@@ -123,6 +129,16 @@ equivalente per un nodo Grastorp.
 - `scripts/validate-autoinstall.py` valida anche la struttura di
   `iso/storage-*-disk.yaml` (azioni con riferimenti `device`/`volume`
   coerenti, fstype, `swap.size: 0`).
+- Boot **UEFI** (es. Hyper-V Gen2, e la gran parte dell'hardware server
+  moderno): entrambe le topologie impostano `grub_device: true` sulla
+  partizione ESP oltre che sul disco — senza, Subiquity rifiuta l'intera
+  installazione con "autoinstall config did not create needed bootloader
+  partition" (mai emerso nei primi test, tutti su boot BIOS legacy).
+- Validato su hardware reale (HP Z8 G4, VM Hyper-V Gen2): installazione
+  a 2 dischi completa senza errori (partizionamento, grub, Datastore
+  montato via late-commands); il rientro SSH dopo il reboot non è ancora
+  confermato in modo affidabile nell'ambiente di test — vedi
+  [`logbook-fase2.md`](logbook-fase2.md) per lo stato aggiornato.
 - Dettagli di design e ricerca (schema `match` di Subiquity, scelta
   XFS/mountpoint) in [`logbook-fase2.md`](logbook-fase2.md).
 
