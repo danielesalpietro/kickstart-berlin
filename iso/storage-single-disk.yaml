@@ -25,11 +25,20 @@
         size: 1M
         flag: bios_grub
 
+      # "grub_device: true" qui (oltre che sul disco sopra, necessario per
+      # il boot BIOS legacy): su un sistema UEFI Subiquity non riconosce la
+      # ESP come partizione bootloader senza questo flag esplicito sulla
+      # partizione stessa, e rifiuta l'intera config PRIMA di iniziare il
+      # partizionamento con "autoinstall config did not create needed
+      # bootloader partition" - scoperto in un boot test Hyper-V reale
+      # (Gen2, sempre UEFI), mai esercitato dal test QEMU in BIOS legacy
+      # del sandbox - vedi logbook-fase2.md.
       - type: partition
         id: efi-partition
         device: system-disk
         size: 512M
         flag: boot
+        grub_device: true
 
       - type: format
         id: efi-format

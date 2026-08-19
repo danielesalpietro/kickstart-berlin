@@ -252,36 +252,136 @@ funzionante end-to-end**: disco di sistema, EFI, BIOS boot, root, e
 Datastore XFS tutti creati e formattati correttamente, grub installato
 con successo sul risultato.
 
+## 2026-08-19 — Analisi critica del branch (nuova sessione) + test reali su Z8 (Hyper-V)
+
+Nuova sessione (continuazione da Fase 1, stessa HP Z8 G4). Prima di
+qualunque test: analisi critica del branch così com'era stato lasciato
+(11 commit, mai in PR). Verificato di persona (non solo fidandosi del
+logbook): letto ogni file toccato, validato YAML/shellcheck in modo
+indipendente. Giudizio: metodo migliorato rispetto alla Fase 1 (verifica
+doc ufficiale prima di scrivere lo storage.config), buon riuso
+dell'infrastruttura Fase 1, 6 bug reali trovati con test veri. Rischio
+principale segnalato prima di procedere: l'euristica "disco più piccolo
+= sistema" (dual-disk) mai verificata; scenario a 2 dischi mai testato
+nemmeno nel sandbox; nessun run mai arrivato a reboot+SSH completo.
+
+Checklist pre-volo eseguita su Z8: sessione riavviata come Amministratore
+(richiesto per Hyper-V, stesso limite della Fase 1), verificato switch
+"Default Switch" disponibile, ~346GB liberi su disco, tooling WSL
+(xorriso/qemu/python3-yaml) ancora presente e riusabile dalla Fase 1.
+
+**Bug #7 — encoding PowerShell reintrodotto**: `boot-test-hyperv.ps1`
+(modificato in Fase 2 per supportare `-Disks 2`) conteneva di nuovo
+caratteri non-ASCII (em-dash "—") in stringhe/commenti, stesso problema
+già risolto in Fase 1 (Windows PowerShell 5.1 legge il file con encoding
+sbagliato, corrompendo i caratteri e rompendo il parsing). Fix:
+rimossi tutti i caratteri non-ASCII dal file (`sed 's/—/-/g'`).
+
+**Bug #8 (falso positivo, non un bug reale) — controllo dimensione ISO
+troppo rigido**: build dell'ISO a 2 dischi segnalata come fallita dal
+controllo difensivo aggiunto per il bug #5 ("ISO generata più piccola
+dell'ISO sorgente di 798KB"). Verificato con `xorriso -osirrox` che
+l'ISO generata contiene correttamente tutto il necessario (2 azioni
+`disk`, euristiche `match` corrette, nessun placeholder residuo) e che
+il boot record (El Torito, GPT, EFI) è intatto — confermato in modo
+definitivo dal boot test reale che segue, arrivato fino a un ciclo
+d'installazione completo. Lo scarto di ~798KB è risultato **riproducibile
+e costante** su build successive identiche (stesso identico byte count
+ogni volta): quasi certamente un artefatto benigno del meccanismo di
+"replay" del boot catalog di xorriso quando si sostituiscono i file di
+boot (allineamento/padding), non perdita di dati. **Il controllo
+`>=` andrebbe ammorbidito o approfondito** (non ancora corretto in
+questa sessione, segnalato per non bloccare CI in futuro con falsi
+positivi).
+
+**Bug #9 (il più importante) — bootloader partition mancante su UEFI**:
+primo boot test reale a 2 dischi (Hyper-V Gen2, sempre UEFI) fallito
+**immediatissimo**, prima ancora dell'inizio del partizionamento:
+`subiquity/Filesystem/apply_autoinstall_config: autoinstall config did
+not create needed bootloader partition`. Causa: lo storage.config aveva
+`grub_device: true` solo sul disco (necessario per il boot BIOS legacy,
+unico scenario testato finora nel sandbox Fase 2), ma su un sistema UEFI
+Subiquity richiede quel flag esplicitamente **sulla partizione ESP
+stessa**. Confermato non a memoria ma con prove concrete: `gh search
+code` su repository terzi che hanno incontrato lo stesso identico errore
+("grub_device: true is required on the ESP partition (not just the
+disk) because Subiquity in Ubuntu 24.04.3 fails to recognize the ESP as
+the bootloader partition without it") più il sorgente di Subiquity
+stesso (`subiquity/models/storage.py`: `grub_device` è un campo valido
+anche a livello di partizione, non solo disco).
+
+**Implicazione più ampia di questo bug**: l'intero storage.config
+esplicito della Fase 2 non era mai stato testato in un ambiente
+genuinamente UEFI (il test QEMU del sandbox usava boot BIOS legacy per
+default) — e la maggior parte dell'hardware server reale moderno
+(incluso il target finale di questo progetto) boota UEFI, non BIOS
+legacy. Senza questo fix, la Fase 2 avrebbe fallito su qualunque nodo
+reale UEFI.
+
+Fix applicato a **entrambe** le topologie (`storage-single-disk.yaml`,
+`storage-dual-disk.yaml`): aggiunto `grub_device: true` anche
+sull'azione `efi-partition`, mantenuto anche sul disco (serve comunque
+per BIOS legacy, che continua a funzionare).
+
+**Esito dopo il fix**: rieseguito il boot test a 2 dischi. **L'intera
+installazione completa con successo**, zero errori: partizionamento
+(entrambi i dischi, euristica dimensione rispettata), curthooks/grub,
+`openssh-server`, `unattended-upgrades`, **entrambi i late-commands**
+(NOPASSWD sudo e mount Datastore via UUID/fstab/symlink) — tutti
+confermati riusciti dal trace seriale. La VM avvia il reboot
+(`subiquity/Shutdown/shutdown: mode=REBOOT`) ma non torna mai
+raggiungibile via SSH entro il timeout (5400s): il log seriale mostra
+lo stesso identico timestamp del kernel (531.373256s) ripetuto per
+l'intera attesa — non un loop di reinstallazione (si vedrebbero nuovi
+messaggi di boot), più probabile un blocco della VM durante il reset
+ACPI dopo il reboot, specifico di Hyper-V (es. il DVD dell'ISO resta
+collegato come primo boot device dopo l'installazione, mai staccato dallo
+script). **Non sembra un bug della logica Fase 2**: tutta la parte di cui
+questa issue è responsabile (partizionamento, Datastore) è confermata
+corretta end-to-end fino a un ciclo di installazione completo — il
+problema residuo è nell'infrastruttura di test Hyper-V (gestione del
+reboot), non nell'autoinstall. Retry in corso per capire se è un blocco
+isolato o sistematico.
+
 ## Stato rispetto alla Definition of Done (issue #2)
 
 - [x] Sezione `storage` con partizione sistema + partizione dedicata
       Datastore, size sistema parametrizzata (non hardcoded).
 - [x] Gestione del caso multi-disco: topologia dedicata (`--disks 2`),
       fail-fast intenzionale se il conteggio dischi reale non corrisponde.
-- [x] Layout verificato via boot reale in QEMU (scenario 1 disco):
-      partizionamento (EFI, BIOS boot, root, Datastore XFS) completato
-      con successo, grub installato correttamente sul risultato.
-      `lsblk`/`findmnt` non ancora eseguiti manualmente sull'host finale
-      (il run si ferma prima, sul limite di rete del sandbox per
-      `run_unattended_upgrades` — non blocca la verifica del
-      partizionamento, che avviene prima).
+- [x] Layout verificato via boot reale **con rete diretta** (Hyper-V su
+      HP Z8 G4, non solo il sandbox limitato): partizionamento a 2 dischi
+      (EFI con `grub_device` corretto per UEFI, BIOS boot, root,
+      Datastore XFS) completato con successo, grub installato
+      correttamente, **entrambi i late-commands riusciti** (NOPASSWD
+      sudo, mount Datastore via UUID/fstab/symlink).
+- [x] Euristica "disco più piccolo = sistema" (dual-disk): **verificata
+      con un test reale** — install completata correttamente con dischi
+      di dimensione esplicitamente diversa (20GB/40GB).
+- [~] Ciclo completo fino a login SSH post-reboot: install confermata al
+      100% (zero errori in tutto il trace), ma la VM non torna
+      raggiungibile dopo il reboot entro il timeout — probabile problema
+      di infrastruttura test Hyper-V (non della logica Fase 2), in fase
+      di verifica (retry in corso per capire se isolato o sistematico).
 - [~] Integrazione CI reale su dischi virtuali QEMU (scenario singolo e
-      doppio) — pipeline pronta (matrice in `ci.yml`), verificata
-      manualmente per lo scenario a 1 disco in questo sandbox (rete
-      limitata); l'esecuzione reale su CI (rete diretta) e lo scenario a
-      2 dischi restano da eseguire.
+      doppio) — pipeline pronta (matrice in `ci.yml`), non ancora
+      eseguita su CI GitHub Actions in questa fase.
 - [ ] Verifica su hardware fisico multi-disco reale — manuale, fuori
       scope di questa fase di sviluppo.
 
 ## Prossimi passi
 
-- [ ] Rieseguire lo scenario a 1 disco su rete reale (CI
-      `workflow_dispatch`, o sessione locale) per confermare il ciclo
-      completo install→reboot→login SSH→Datastore montato, oltre il
-      punto già raggiunto in sandbox.
-- [ ] Eseguire lo scenario a 2 dischi (qui non ancora rilanciato dopo i
-      fix 1-6, tutti scoperti sullo scenario a 1 disco ma applicabili a
-      entrambi) — in particolare confermare o smentire l'euristica
-      "disco più piccolo = sistema" con un test reale (segnalata come
-      assunzione non verificata da fonte).
-- [ ] Aprire la PR quando entrambi gli scenari sono confermati.
+- [ ] Capire se il mancato ritorno SSH post-reboot (dual-disk, Hyper-V)
+      è un blocco isolato o sistematico (retry in corso) — se
+      sistematico, indagare la gestione del boot device dopo
+      l'installazione (es. staccare il DVD/ISO prima del reboot).
+- [ ] Ripetere lo stesso test anche per lo scenario a 1 disco (qui non
+      ancora rieseguito con i fix di questa sessione: encoding
+      PowerShell, `grub_device` su ESP — quest'ultimo rilevante anche lì).
+- [ ] Ammorbidire o approfondire il controllo dimensione ISO in
+      `build-iso.sh` (falso positivo trovato in questa sessione, rischia
+      di bloccare CI con build in realtà valide).
+- [ ] Eseguire lo scenario CI reale (`workflow_dispatch`, rete diretta
+      GitHub Actions) per un secondo riscontro indipendente.
+- [ ] Aprire la PR quando il ciclo completo (incluso reboot+SSH) è
+      confermato per entrambi gli scenari.

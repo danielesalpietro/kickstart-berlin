@@ -31,11 +31,16 @@
         size: 1M
         flag: bios_grub
 
+      # "grub_device: true" qui: vedi storage-single-disk.yaml per il
+      # dettaglio (necessario su UEFI, senza Subiquity rifiuta l'intera
+      # config con "autoinstall config did not create needed bootloader
+      # partition").
       - type: partition
         id: efi-partition
         device: system-disk
         size: 512M
         flag: boot
+        grub_device: true
 
       - type: format
         id: efi-format

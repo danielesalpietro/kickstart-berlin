@@ -7,7 +7,7 @@ seriale via named pipe (richiede console=ttyS0 nel kernel, gia' presente
 nell'ISO generata da build-iso.sh) e verifica il login SSH con la chiave
 iniettata a build-time. Con -Disks 2 crea due VHD di dimensione diversa
 (sistema piu' piccolo, datastore piu' grande) per testare la topologia
-dual-disk della Fase 2 (issue #2) — a differenza di boot-test-qemu.sh
+dual-disk della Fase 2 (issue #2) - a differenza di boot-test-qemu.sh
 --disks 2, che oggi crea dischi tutti della stessa taglia e quindi non
 verifica davvero l'euristica "disco piu' piccolo = sistema" di
 iso/storage-dual-disk.yaml. Ripulisce VM e VHD al termine.
@@ -38,7 +38,7 @@ param(
 
 if ($Disks -eq 2 -and $DiskGB -eq $DiskGB2) {
     throw "-DiskGB e -DiskGB2 sono uguali (${DiskGB}GB): la topologia dual-disk assegna il sistema al disco " +
-          "piu' piccolo (match: size: smallest in iso/storage-dual-disk.yaml) — dischi di taglia identica " +
+          "piu' piccolo (match: size: smallest in iso/storage-dual-disk.yaml) - dischi di taglia identica " +
           "non testano quell'euristica. Usa due valori diversi."
 }
 
@@ -147,7 +147,7 @@ try {
     $remoteCheck = "set -e; target=`$(readlink -f '$datastoreLink'); fstype=`$(findmnt -no FSTYPE --target `"`$target`"); [ `"`$fstype`" = '$DatastoreFilesystem' ]"
     & ssh @sshArgs $remoteCheck
     if ($LASTEXITCODE -ne 0) {
-        Log "Datastore non montato correttamente su ${datastoreLink} (atteso fstype ${DatastoreFilesystem}) — diagnostica remota:"
+        Log "Datastore non montato correttamente su ${datastoreLink} (atteso fstype ${DatastoreFilesystem}) - diagnostica remota:"
         & ssh @sshArgs "lsblk -f; echo ---; findmnt; echo ---; ls -la '$DatastoreMountRoot'" 2>&1
         exit 1
     }
@@ -155,7 +155,7 @@ try {
 
     if ($Disks -eq 2) {
         # Verifica aggiuntiva specifica dual-disk: il disco di sistema (root) deve
-        # essere quello piu' piccolo — conferma o smentisce l'euristica non ancora
+        # essere quello piu' piccolo - conferma o smentisce l'euristica non ancora
         # validata segnalata in logbook-fase2.md.
         $rootSizeCheck = "lsblk -bno SIZE `$(findmnt -no SOURCE --target /) | head -1"
         $rootDiskBytes = & ssh @sshArgs $rootSizeCheck
