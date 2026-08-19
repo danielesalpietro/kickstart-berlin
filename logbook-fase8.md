@@ -77,12 +77,41 @@ completamente testabile qui, senza limiti da segnalare:
 - Output JSON verificato manualmente: struttura valida, un campo per
   ogni fonte, nessuna eccezione propagata.
 
+## 2026-08-20 — Confermato su host reale (VM Azure): dati veri, non più vuoti
+
+VM-TEST2, `postinstall/setup.sh` sorgentato (stesso procedimento di Fase
+6), invocato `phase8_hardware_info` direttamente. Output salvato in
+`/opt/kickstart-berlin/hardware-info.json`, ispezionato campo per campo:
+
+- `dmidecode_system`/`_baseboard`/`_memory`/`_processor`: **dati reali**,
+  non più lo "Scanning /dev/mem" vuoto del sandbox — su questa VM
+  riportano correttamente Manufacturer "Microsoft Corporation" (Hyper-V/
+  Azure), CPU "INTEL(R) XEON(R) PLATINUM 8573C", 2 moduli di memoria
+  (1GB + 31GB), coerente con l'hardware reale della VM.
+- `cpu` (`lscpu`): dati completi reali (flags, cache, virtualizzazione).
+- `pci` (`lspci`): 3 device reali elencati (non vuoto/assente come nel
+  sandbox).
+- `block_devices` (`lsblk`): dischi reali della VM (NVMe root + disco
+  dati riattaccato).
+- `network` (`ip -brief addr`): interfacce reali con IP assegnati.
+- `nvidia_gpu` (`nvidia-smi`): **fallisce correttamente** con `<errore:
+  [Errno 2] No such file or directory: 'nvidia-smi'>` — comportamento
+  atteso e corretto (nessuna GPU su questa VM, il fallimento per-campo
+  non impedisce la raccolta del resto, esattamente come progettato).
+
+Nessun bug trovato: la raccolta funziona esattamente come nel sandbox,
+solo con dati reali invece che vuoti/assenti. Pulizia post-test
+(`/opt/kickstart-berlin` rimossa).
+
 ## Prossimi passi
 
 - [ ] Quando grastorp#14 definisce lo schema "machine info" atteso,
       valutare se serve un passaggio di trasformazione qui o se resta
       responsabilità del backend Grastorp consumare lo snapshot grezzo.
-- [ ] Confermare su hardware reale (VM Azure o Z8) che `dmidecode`
-      restituisca dati reali (non lo "Scanning /dev/mem" vuoto visto in
-      questo container) — atteso ma non ancora confermato fuori sandbox.
-- [ ] Aprire la PR quando confermato su host reale.
+- [x] Confermare su hardware reale (VM Azure o Z8) che `dmidecode`
+      restituisca dati reali — **confermato sopra**.
+- [ ] Confermare `nvidia_gpu` con una GPU reale presente (Z8 o istanza
+      dedicata) — qui verificato solo il percorso di fallback corretto
+      in assenza di GPU.
+- [ ] Aprire la PR (la raccolta dati è ora confermata su host reale;
+      resta aperta solo la conferma col campo `nvidia_gpu` popolato).

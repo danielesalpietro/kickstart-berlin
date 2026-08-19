@@ -79,11 +79,37 @@ del comando `ufw`, non contro il binario vero. Da confermare sulla VM
 Azure (dove `ufw` dovrebbe essere presente di default su Ubuntu Server)
 o sulla Z8.
 
+## 2026-08-20 — Confermato su host reale (VM Azure) con ufw vero
+
+VM-TEST2 (rete diretta), `ufw` già presente ma inattivo. Prima di
+attivarlo: aggiunta esplicita la regola `OpenSSH` (`ufw allow OpenSSH`)
+per non perdere l'accesso — verificato con una nuova connessione SSH
+subito dopo `ufw --force enable` che l'accesso resta funzionante.
+
+`postinstall/setup.sh` sorgentato con `main "$@"` disabilitato (stesso
+procedimento delle fasi precedenti), placeholder sostituiti coi valori
+reali (`16384`/`32768`), invocato `phase6_network` direttamente due
+volte:
+
+1. **Primo giro**: regole aggiunte correttamente — `16384:32768/tcp` e
+   `/udp`, sia IPv4 che IPv6 (`ufw` genera automaticamente la coppia
+   v4/v6 per ogni regola).
+2. **Secondo giro (idempotenza)**: rilevate le regole già presenti
+   (`ufw status | grep` trova il match), nessuna riaggiunta, nessuna
+   duplicazione — confermato con `ufw status numbered`, ancora
+   esattamente 6 regole (OpenSSH + range TCP/UDP, v4+v6).
+
+Nessun bug trovato: il comportamento con `ufw` vero corrisponde
+esattamente a quanto validato con lo stub in sandbox. Host ripristinato
+allo stato precedente dopo il test (`ufw --force disable`).
+
 ## Prossimi passi
 
-- [ ] Confermare su un host reale (VM Azure o Z8) che le regole ufw
-      vengano scritte correttamente col comando vero, non solo lo stub.
+- [x] Confermare su un host reale (VM Azure o Z8) che le regole ufw
+      vengano scritte correttamente col comando vero — **confermato
+      sopra**.
 - [ ] Quando la Fase 7 (backend/agent Grastorp) prende forma, collegare
       la lettura del range porte da `config/autoinstall-defaults.json`
       invece di lasciarlo solo nel firewall.
-- [ ] Aprire la PR quando confermato su host reale.
+- [ ] Aprire la PR (la Fase 6 è ora pienamente confermata, nessun
+      blocco residuo per questa fase specifica).
