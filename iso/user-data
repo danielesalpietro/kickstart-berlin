@@ -9,6 +9,23 @@
 autoinstall:
   version: 1
 
+  # Hook opzionale, usato SOLO dai build di sviluppo/test (mai in
+  # produzione — vedi scripts/build-iso.sh --dev-skip-security-updates e
+  # logbook-fase3.md). Di default e' un no-op ("true"): la build di
+  # produzione scarica ed installa davvero gli update di sicurezza
+  # (updates: security sotto), come da comportamento nativo Subiquity.
+  # Quando il flag di sviluppo e' passato, questa riga diventa un comando
+  # che blocca la risoluzione di security.ubuntu.com nell'ambiente live
+  # (via /etc/hosts), cosi' lo step "updates: security" fallisce
+  # rapidamente invece di attendere/riprovare in rete per decine di
+  # minuti ad ogni singolo ciclo di test — costoso specialmente sotto
+  # emulazione TCG (nessun KVM) come nel sandbox di sviluppo. early-
+  # commands gira "prima del probing dei device di rete" (v. Subiquity
+  # autoinstall reference), quindi la voce in /etc/hosts persiste per
+  # tutta la sessione live, inclusa la fase updates successiva.
+  early-commands:
+    - '__DEV_SKIP_SECURITY_UPDATES_HOOK__'
+
   locale: en_US.UTF-8
   keyboard:
     layout: us

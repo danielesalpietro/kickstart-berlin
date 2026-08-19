@@ -27,6 +27,7 @@ SKIP_GPG_CHECK="${SKIP_GPG_CHECK:-0}"
 UBUNTU_VERSION=""
 SYSTEM_PARTITION_SIZE=""
 DISK_TOPOLOGY=""
+DEV_SKIP_SECURITY_UPDATES=0
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." &>/dev/null && pwd)"
@@ -98,6 +99,17 @@ Opzioni:
                              più piccolo, datastore sull'altro per intero).
                              Default da config/autoinstall-defaults.json:
                              $([[ "$DISK_TOPOLOGY" == dual ]] && echo 2 || echo 1).
+      --dev-skip-security-updates
+                             SOLO sviluppo/test, MAI produzione: blocca
+                             security.ubuntu.com nell'ambiente live (via
+                             /etc/hosts, early-commands) cosi' lo step
+                             "updates: security" fallisce subito invece
+                             di impiegare decine di minuti in rete ad
+                             ogni ciclo di test/CI. L'immagine risultante
+                             NON ha gli update di sicurezza installati:
+                             non usare questo flag per ISO destinate a
+                             nodi reali. Default: disattivato (comporta-
+                             mento nativo Subiquity, update reali).
   -h, --help                Mostra questo messaggio.
 EOF
 }
@@ -118,6 +130,7 @@ while [[ $# -gt 0 ]]; do
         *) err "--disks accetta solo 1 o 2, ricevuto: $2" ;;
       esac
       shift 2 ;;
+    --dev-skip-security-updates) DEV_SKIP_SECURITY_UPDATES=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) err "Opzione sconosciuta: $1 (vedi --help)" ;;
   esac
@@ -241,6 +254,13 @@ done
 
 log "Topologia dischi: ${DISK_TOPOLOGY} (${STORAGE_FRAGMENT})"
 
+if [[ "$DEV_SKIP_SECURITY_UPDATES" == "1" ]]; then
+  log "ATTENZIONE: --dev-skip-security-updates attivo — gli update di sicurezza NON verranno installati in questa ISO (solo sviluppo/test)."
+  DEV_SKIP_SECURITY_UPDATES_HOOK='echo "127.0.0.1 security.ubuntu.com" >> /etc/hosts'
+else
+  DEV_SKIP_SECURITY_UPDATES_HOOK="true"
+fi
+
 # Inserisce il frammento storage al posto del placeholder __STORAGE_CONFIG__
 # (idioma sed "r file" + "d": accoda il contenuto del frammento dopo la riga
 # placeholder, poi elimina la riga placeholder stessa), quindi sostituisce
@@ -261,6 +281,7 @@ sed -e "s| __STORAGE_CONFIG__\$||" \
       -e "s|__DATASTORE_LABEL__|${DEFAULT_DATASTORE_LABEL}|g" \
       -e "s|__DATASTORE_MOUNT_ROOT__|${DEFAULT_DATASTORE_MOUNT_ROOT}|g" \
       -e "s|__DATASTORE_SYMLINK_NAME__|${DEFAULT_DATASTORE_SYMLINK_NAME}|g" \
+      -e "s|__DEV_SKIP_SECURITY_UPDATES_HOOK__|${DEV_SKIP_SECURITY_UPDATES_HOOK}|" \
   > "$AUTOINSTALL_USER_DATA"
 
 # Script post-install (Fase 3+, issue #3): stesso trattamento di

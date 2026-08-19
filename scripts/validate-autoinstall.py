@@ -58,6 +58,10 @@ def load_dummy_substitutions() -> dict[str, str]:
         "__DATASTORE_LABEL__": datastore["label"],
         "__DATASTORE_MOUNT_ROOT__": datastore["mount_root"],
         "__DATASTORE_SYMLINK_NAME__": datastore["symlink_name"],
+        # Valore di produzione (no-op): vedi scripts/build-iso.sh
+        # --dev-skip-security-updates per il valore usato nei build di
+        # sviluppo/test.
+        "__DEV_SKIP_SECURITY_UPDATES_HOOK__": "true",
     }
 
 
