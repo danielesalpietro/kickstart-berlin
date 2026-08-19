@@ -45,9 +45,13 @@ autoinstall:
   # iso/storage-single-disk.yaml e iso/storage-dual-disk.yaml.
   storage: __STORAGE_CONFIG__
 
+  # "updates: security" e' la chiave nativa Subiquity per gli update di
+  # sicurezza (equivalente autoinstall dei moduli cloud-init generici
+  # "package_update"/"package_upgrade", rimossi: non sono chiavi
+  # riconosciute a livello autoinstall - Subiquity emette un warning
+  # "Unrecognized top-level key" e segnala che diventera' un errore
+  # nelle versioni future).
   updates: security
-  package_update: true
-  package_upgrade: false
   packages:
     - openssh-server
     # NOTA: "hyperv-daemons" (comodita' di solo testing, per vedere IP/

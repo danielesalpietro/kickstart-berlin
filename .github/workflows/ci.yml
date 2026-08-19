@@ -70,9 +70,15 @@ jobs:
 
       - name: Costruisci ISO autoinstall (${{ matrix.disks }} disco/i)
         run: |
+          # --system-size 10G: il default di produzione (100G, config/
+          # autoinstall-defaults.json) non entrerebbe nel disco throwaway
+          # da 20G di boot-test-qemu.sh. Rilevante solo per la topologia
+          # single (--disks 1): con "dual" il root usa l'intero disco
+          # dedicato (size:-1), il flag viene ignorato senza effetto.
           scripts/build-iso.sh \
             -k "${{ runner.temp }}/test_key.pub" \
             --disks "${{ matrix.disks }}" \
+            --system-size 10G \
             -o "${{ runner.temp }}/kickstart-berlin-test.iso"
 
       - name: Boot ISO in QEMU, verifica autoinstall + login SSH + Datastore
