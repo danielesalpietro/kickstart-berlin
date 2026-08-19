@@ -1,0 +1,24 @@
+{
+  "$comment": "Default centralizzati per la generazione dell'ISO autoinstall (scripts/build-iso.sh). Ogni valore qui e' un default: i flag CLI di build-iso.sh, quando passati, hanno sempre precedenza su questo file. Vedi README/issue #1 e #2 per il contesto di ciascun campo.",
+
+  "ubuntu_version": "24.04.2",
+
+  "identity": {
+    "$comment": "Valore di riferimento/documentazione: rispecchia quanto hardcoded in iso/user-data, ma non e' (ancora) letto da build-iso.sh ne' agganciato a un flag CLI - a differenza di storage.*, che e' la fonte attiva.",
+    "hostname": "kickstart-berlin",
+    "username": "admin"
+  },
+
+  "storage": {
+    "$comment": "disk_topology seleziona quale frammento iso/storage-<topology>-disk.yaml viene iniettato in iso/user-data. 'single': un solo disco fisico (sistema + datastore sullo stesso disco). 'dual': due dischi fisici (sistema su uno, datastore sull'altro) - vedi issue #2.",
+    "disk_topology": "single",
+    "system_partition_size": "100G",
+    "datastore": {
+      "$comment": "label: XFS limita la label a 12 caratteri (mkfs.xfs -L fallisce oltre); 'datastore' (9) ci sta comodo. Un solo datastore per nodo in questa fase, nessun suffisso numerico necessario.",
+      "filesystem": "xfs",
+      "label": "datastore",
+      "mount_root": "/grastorp/volumes",
+      "symlink_name": "datastore"
+    }
+  }
+}

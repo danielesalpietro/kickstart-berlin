@@ -1,0 +1,82 @@
+    # Topologia "single": un solo disco fisico. Sistema (EFI + root) e
+    # Datastore Grastorp condividono lo stesso disco: __SYSTEM_PARTITION_SIZE__
+    # per il root, il resto del disco al Datastore.
+    swap:
+      size: 0
+    config:
+      - type: disk
+        id: system-disk
+        match: {}
+        ptable: gpt
+        wipe: superblock
+        grub_device: true
+
+      # Partizione BIOS Boot (nessun filesystem, GRUB vi incorpora il
+      # proprio core.img): senza, "grub-install" per la piattaforma
+      # legacy i386-pc fallisce su tabella GPT ("this GPT partition
+      # label contains no BIOS Boot Partition; embedding won't be
+      # possible", scoperto in un boot test QEMU reale in BIOS legacy -
+      # vedi logbook-fase2.md). Necessaria per qualunque boot non-UEFI su
+      # GPT, non solo per il test: va prima delle altre partizioni per
+      # posizionamento convenzionale a inizio disco.
+      - type: partition
+        id: bios-boot-partition
+        device: system-disk
+        size: 1M
+        flag: bios_grub
+
+      # "grub_device: true" qui (oltre che sul disco sopra, necessario per
+      # il boot BIOS legacy): su un sistema UEFI Subiquity non riconosce la
+      # ESP come partizione bootloader senza questo flag esplicito sulla
+      # partizione stessa, e rifiuta l'intera config PRIMA di iniziare il
+      # partizionamento con "autoinstall config did not create needed
+      # bootloader partition" - scoperto in un boot test Hyper-V reale
+      # (Gen2, sempre UEFI), mai esercitato dal test QEMU in BIOS legacy
+      # del sandbox - vedi logbook-fase2.md.
+      - type: partition
+        id: efi-partition
+        device: system-disk
+        size: 512M
+        flag: boot
+        grub_device: true
+
+      - type: format
+        id: efi-format
+        volume: efi-partition
+        fstype: fat32
+
+      - type: mount
+        id: efi-mount
+        device: efi-format
+        path: /boot/efi
+
+      - type: partition
+        id: root-partition
+        device: system-disk
+        size: __SYSTEM_PARTITION_SIZE__
+
+      - type: format
+        id: root-format
+        volume: root-partition
+        fstype: ext4
+
+      - type: mount
+        id: root-mount
+        device: root-format
+        path: /
+
+      - type: partition
+        id: datastore-partition
+        device: system-disk
+        size: -1
+
+      - type: format
+        id: datastore-format
+        volume: datastore-partition
+        fstype: __DATASTORE_FILESYSTEM__
+        label: __DATASTORE_LABEL__
+      # NOTA: nessuna azione "mount" qui per il Datastore. Il mountpoint
+      # finale dipende dalla UUID che mkfs genera in questo stesso step,
+      # non prevedibile staticamente in questo file: viene montato via
+      # late-commands (stesso procedimento manuale documentato da Vast.ai
+      # per il proprio /var/lib/docker: mkfs -> blkid -> fstab).

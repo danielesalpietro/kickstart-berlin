@@ -3,26 +3,63 @@
 # build-iso.sh — ripacchetta l'ISO ufficiale Ubuntu Server con un autoinstall
 # (cloud-init) iniettato, per un'installazione completamente non interattiva.
 #
-# Fase 1 del piano kickstart-berlin (vedi README, issue #1).
+# Fasi 1-2 del piano kickstart-berlin (vedi README, issue #1, #2).
 #
 # Uso:
 #   scripts/build-iso.sh -k ~/.ssh/id_ed25519.pub [-v 24.04.2] [-o output.iso]
 #
 # La chiave pubblica SSH è OBBLIGATORIA e viene iniettata nel file
 # iso/user-data solo a build-time: non è mai hardcoded nel repo.
+#
+# Tutti gli altri default (versione Ubuntu, size partizione sistema,
+# topologia dischi, parametri Datastore) vivono in
+# config/autoinstall-defaults.json — i flag CLI qui sotto, quando passati,
+# hanno sempre precedenza su quel file.
 
 set -euo pipefail
 
-UBUNTU_VERSION="24.04.2"
 OUTPUT_ISO=""
 SSH_KEY_PATH=""
 SSH_KEY_STRING=""
 WORK_DIR=""
 CACHE_DIR=""
 SKIP_GPG_CHECK="${SKIP_GPG_CHECK:-0}"
+UBUNTU_VERSION=""
+SYSTEM_PARTITION_SIZE=""
+DISK_TOPOLOGY=""
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." &>/dev/null && pwd)"
+
+log() { printf '[build-iso] %s\n' "$*" >&2; }
+err() { printf '[build-iso] ERRORE: %s\n' "$*" >&2; exit 1; }
+
+DEFAULTS_JSON="${REPO_ROOT}/config/autoinstall-defaults.json"
+[[ -f "$DEFAULTS_JSON" ]] || err "file di default non trovato: $DEFAULTS_JSON"
+command -v python3 >/dev/null 2>&1 || err "python3 richiesto per leggere ${DEFAULTS_JSON}"
+
+# shellcheck disable=SC1090
+source <(python3 - "$DEFAULTS_JSON" <<'PYEOF'
+import json, shlex, sys
+with open(sys.argv[1]) as f:
+    d = json.load(f)
+def emit(var, value):
+    print(f"{var}={shlex.quote(str(value))}")
+emit("DEFAULT_UBUNTU_VERSION", d["ubuntu_version"])
+s = d["storage"]
+emit("DEFAULT_SYSTEM_PARTITION_SIZE", s["system_partition_size"])
+emit("DEFAULT_DISK_TOPOLOGY", s["disk_topology"])
+ds = s["datastore"]
+emit("DEFAULT_DATASTORE_FILESYSTEM", ds["filesystem"])
+emit("DEFAULT_DATASTORE_LABEL", ds["label"])
+emit("DEFAULT_DATASTORE_MOUNT_ROOT", ds["mount_root"])
+emit("DEFAULT_DATASTORE_SYMLINK_NAME", ds["symlink_name"])
+PYEOF
+)
+
+UBUNTU_VERSION="$DEFAULT_UBUNTU_VERSION"
+SYSTEM_PARTITION_SIZE="$DEFAULT_SYSTEM_PARTITION_SIZE"
+DISK_TOPOLOGY="$DEFAULT_DISK_TOPOLOGY"
 
 usage() {
   cat <<EOF
@@ -33,7 +70,8 @@ Opzioni:
                              nell'utente admin (obbligatorio).
       --ssh-key-string <s>  In alternativa a -k, la chiave come stringa.
   -v, --version <ver>       Versione Ubuntu Server LTS da usare
-                             (default: ${UBUNTU_VERSION}).
+                             (default da config/autoinstall-defaults.json:
+                             ${UBUNTU_VERSION}).
   -o, --output <path>       Path dell'ISO generata
                              (default: build/kickstart-berlin-<ver>-autoinstall.iso).
       --skip-gpg-check      Salta la verifica della firma GPG di SHA256SUMS
@@ -48,12 +86,21 @@ Opzioni:
                              cache corrotta) si ri-scarica automaticamente.
                              Se omesso (default, usato in CI/produzione),
                              l'ISO viene sempre scaricata da zero.
+      --system-size <size>  Size della partizione di sistema (root ext4),
+                             sintassi curtin (es. 100G). Rilevante solo con
+                             topologia "single" (--disks 1): con "dual" il
+                             disco di sistema è dedicato e viene usato per
+                             intero. Default da
+                             config/autoinstall-defaults.json: ${SYSTEM_PARTITION_SIZE}.
+      --disks <1|2>          Topologia dischi target (Fase 2, issue #2):
+                             1 = un solo disco fisico (sistema+datastore
+                             condiviso), 2 = due dischi fisici (sistema sul
+                             più piccolo, datastore sull'altro per intero).
+                             Default da config/autoinstall-defaults.json:
+                             $([[ "$DISK_TOPOLOGY" == dual ]] && echo 2 || echo 1).
   -h, --help                Mostra questo messaggio.
 EOF
 }
-
-log() { printf '[build-iso] %s\n' "$*" >&2; }
-err() { printf '[build-iso] ERRORE: %s\n' "$*" >&2; exit 1; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -63,10 +110,22 @@ while [[ $# -gt 0 ]]; do
     -o|--output) OUTPUT_ISO="$2"; shift 2 ;;
     --skip-gpg-check) SKIP_GPG_CHECK=1; shift ;;
     --cache-dir) CACHE_DIR="$2"; shift 2 ;;
+    --system-size) SYSTEM_PARTITION_SIZE="$2"; shift 2 ;;
+    --disks)
+      case "$2" in
+        1) DISK_TOPOLOGY="single" ;;
+        2) DISK_TOPOLOGY="dual" ;;
+        *) err "--disks accetta solo 1 o 2, ricevuto: $2" ;;
+      esac
+      shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) err "Opzione sconosciuta: $1 (vedi --help)" ;;
   esac
 done
+
+STORAGE_FRAGMENT="${REPO_ROOT}/iso/storage-${DISK_TOPOLOGY}-disk.yaml"
+[[ -f "$STORAGE_FRAGMENT" ]] \
+  || err "frammento storage non trovato per topologia '${DISK_TOPOLOGY}': ${STORAGE_FRAGMENT}"
 
 for bin in xorriso curl sha256sum; do
   command -v "$bin" >/dev/null 2>&1 || err "comando richiesto non trovato: $bin"
@@ -180,8 +239,28 @@ done
 [[ ${#MAP_ARGS[@]} -gt 0 ]] \
   || err "nessun file di configurazione boot (grub/isolinux) trovato nell'ISO sorgente"
 
+log "Topologia dischi: ${DISK_TOPOLOGY} (${STORAGE_FRAGMENT})"
+
+# Inserisce il frammento storage al posto del placeholder __STORAGE_CONFIG__
+# (idioma sed "r file" + "d": accoda il contenuto del frammento dopo la riga
+# placeholder, poi elimina la riga placeholder stessa), quindi sostituisce
+# in un solo passaggio finale tutti i placeholder rimasti (chiave SSH, size
+# partizione sistema, parametri Datastore) sul risultato unito.
+# La riga placeholder "  storage: __STORAGE_CONFIG__" diventa "  storage:"
+# (rimuovendo solo il valore placeholder, non l'intera riga/chiave) e subito
+# dopo, nello stesso passaggio sed, viene accodato il contenuto del
+# frammento scelto (già indentato correttamente come figlio di "storage:").
 AUTOINSTALL_USER_DATA="${WORK_DIR}/user-data"
-sed "s|__SSH_AUTHORIZED_KEY__|${SSH_KEY_STRING}|" "${REPO_ROOT}/iso/user-data" \
+sed -e "s| __STORAGE_CONFIG__\$||" \
+    -e "/^  storage:\$/r ${STORAGE_FRAGMENT}" \
+    "${REPO_ROOT}/iso/user-data" \
+  | sed \
+      -e "s|__SSH_AUTHORIZED_KEY__|${SSH_KEY_STRING}|" \
+      -e "s|__SYSTEM_PARTITION_SIZE__|${SYSTEM_PARTITION_SIZE}|g" \
+      -e "s|__DATASTORE_FILESYSTEM__|${DEFAULT_DATASTORE_FILESYSTEM}|g" \
+      -e "s|__DATASTORE_LABEL__|${DEFAULT_DATASTORE_LABEL}|g" \
+      -e "s|__DATASTORE_MOUNT_ROOT__|${DEFAULT_DATASTORE_MOUNT_ROOT}|g" \
+      -e "s|__DATASTORE_SYMLINK_NAME__|${DEFAULT_DATASTORE_SYMLINK_NAME}|g" \
   > "$AUTOINSTALL_USER_DATA"
 
 VOLID="$(xorriso -indev "$SOURCE_ISO" -pvd_info 2>/dev/null \
@@ -190,7 +269,14 @@ VOLID="$(xorriso -indev "$SOURCE_ISO" -pvd_info 2>/dev/null \
 
 log "Ripacchetto l'ISO iniettando autoinstall e preservando il boot catalog originale ..."
 rm -f "$OUTPUT_ISO"
-xorriso -indev "$SOURCE_ISO" \
+# "-abort_on FAILURE": senza, xorriso non restituisce un exit code diverso
+# da zero per problemi di severità FAILURE (es. spazio insufficiente sulla
+# destinazione) - lo script proseguirebbe come se l'ISO fosse stata scritta
+# correttamente nonostante xorriso l'abbia esplicitamente annullata
+# ("Image write cancelled"). Scoperto con un'ISO di build "riuscita" ma in
+# realtà mai scritta su disco.
+xorriso -abort_on FAILURE \
+  -indev "$SOURCE_ISO" \
   -outdev "$OUTPUT_ISO" \
   -map "$AUTOINSTALL_USER_DATA" /server/user-data \
   -map "${REPO_ROOT}/iso/meta-data" /server/meta-data \
@@ -198,6 +284,23 @@ xorriso -indev "$SOURCE_ISO" \
   -boot_image any replay \
   -volid "$VOLID" \
   >/dev/null
+
+# Controllo difensivo aggiuntivo, indipendente dall'exit code del comando
+# xorriso sopra: verifica che l'ISO risultante esista e contenga
+# effettivamente i file appena iniettati. Una prima versione di questo
+# controllo confrontava la dimensione totale con l'ISO sorgente
+# (mai più piccola, dato che si aggiungono solo file) - si è rivelato un
+# falso positivo: il meccanismo di "replay" del boot catalog di xorriso
+# può produrre un output di qualche centinaio di KB più piccolo per
+# differenze di allineamento/padding, pur essendo perfettamente valido
+# (confermato con boot test reali riusciti). Verificare la presenza
+# effettiva dei file iniettati è il controllo corretto, non la dimensione
+# totale.
+[[ -s "$OUTPUT_ISO" ]] || err "ISO non generata: ${OUTPUT_ISO} mancante o vuota dopo xorriso"
+for injected_path in /server/user-data /server/meta-data; do
+  xorriso -abort_on FAILURE -indev "$OUTPUT_ISO" -find "$injected_path" >/dev/null 2>&1 \
+    || err "ISO generata ma ${injected_path} non trovato al suo interno: probabile scrittura incompleta"
+done
 
 log "ISO generata: ${OUTPUT_ISO}"
 sha256sum "$OUTPUT_ISO" | tee "${OUTPUT_ISO}.sha256"

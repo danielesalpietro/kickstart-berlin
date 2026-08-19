@@ -5,9 +5,15 @@ boot fino a un host pronto (OS, driver NVIDIA, Docker, rete, benchmark
 hardware). Base derivata dal flusso di setup host di **Vast.ai**, propedeutica
 all'integrazione in [Grastorp](https://github.com/danielesalpietro/grastorp).
 
-> Stato: **early stage**. Fase 1 (ISO autoinstall) implementata, vedi
-> [`iso/`](iso/), [`scripts/`](scripts/) e [`docs/usb-boot.md`](docs/usb-boot.md).
-> Le altre fasi sono ancora da fare.
+> Stato: **early stage**. Fase 1 (ISO autoinstall) completa e validata
+> end-to-end (CI + hardware reale). Fase 2 (partizionamento disco +
+> Datastore) implementata e validata su hardware reale per lo scenario a
+> 2 dischi (install completa senza errori, incluso il mount del
+> Datastore); resta da confermare in modo affidabile il rientro SSH dopo
+> il reboot nell'ambiente di test Hyper-V (probabile problema
+> d'infrastruttura di test, non della logica d'installazione — vedi
+> [`logbook-fase2.md`](logbook-fase2.md)). Le altre fasi sono ancora da
+> fare.
 
 ## Perché
 
@@ -47,7 +53,7 @@ equivalente per un nodo Grastorp.
 | # | Fase (Vast.ai) | Cosa fa Vast.ai | Equivalente kickstart-berlin / Grastorp | Stato |
 |---|---|---|---|---|
 | 1 | Sistema operativo | Ubuntu Server 22.04/24.04 da ISO ufficiale | Stessa base OS, via `autoinstall` invece di installazione manuale interattiva | **Fatto** ([#1](https://github.com/danielesalpietro/kickstart-berlin/issues/1)) |
-| 2 | Partizionamento disco | `/` ext4 (~100GB) + resto disco separato (xfs, non montato) | Stesso schema: partizione di sistema + partizione dedicata allo storage (Datastore Grastorp) | Da fare |
+| 2 | Partizionamento disco | `/` ext4 (~100GB) + resto disco separato (xfs, non montato) | Stesso schema: partizione di sistema + partizione dedicata allo storage (Datastore Grastorp) | **In corso** ([#2](https://github.com/danielesalpietro/kickstart-berlin/issues/2)) |
 | 3 | Preparazione storage | Estensione LVM, rimozione loopback Docker, dati Docker sul filesystem principale | Stesso fix, necessario ugualmente per non limitare la Model Library di Grastorp a un loopback | Da fare |
 | 4 | Driver NVIDIA + Container Toolkit | Driver pinnato (es. 535) + NVIDIA Container Toolkit da repo ufficiale | Identico: prerequisito già documentato nel README di Grastorp | Da fare |
 | 5 | Docker | Install da `get.docker.com`, config con runtime NVIDIA | Identico | Da fare |
@@ -97,6 +103,44 @@ equivalente per un nodo Grastorp.
 - [`docs/usb-boot.md`](docs/usb-boot.md) — istruzioni per scrivere l'ISO su
   chiavetta USB (`dd`, balenaEtcher/Rufus) e nota su PXE/iPXE come
   alternativa futura.
+
+## Fase 2 — partizionamento disco (sistema + Datastore Grastorp)
+
+- `config/autoinstall-defaults.json` — default centralizzati (versione
+  Ubuntu, size partizione di sistema, topologia dischi, parametri
+  Datastore): unica fonte di verità, letta da `build-iso.sh` a build-time;
+  i flag CLI, quando passati, hanno sempre precedenza.
+- `iso/storage-single-disk.yaml`, `iso/storage-dual-disk.yaml` — schema di
+  partizionamento ad azioni esplicite (curtin/Subiquity `storage.config`):
+  EFI + root ext4 (size configurabile) + partizione dati XFS per il
+  Datastore. Topologia scelta a build-time con `--disks 1|2`:
+
+  ```sh
+  scripts/build-iso.sh -k ~/.ssh/id_ed25519.pub --disks 2 --system-size 120G
+  ```
+
+- Il Datastore viene montato via `late-commands` a convenzione
+  ESXi-style: mountpoint reale `/grastorp/volumes/<UUID>` (UUID generata
+  da `mkfs.xfs`, non prevedibile a design-time) con symlink leggibile
+  fisso `/grastorp/volumes/datastore`.
+- `scripts/boot-test-qemu.sh` supporta ora `--disks 1|2` (dischi virtuali
+  multipli) e verifica anche il mount del Datastore, non solo il login
+  SSH.
+- `scripts/validate-autoinstall.py` valida anche la struttura di
+  `iso/storage-*-disk.yaml` (azioni con riferimenti `device`/`volume`
+  coerenti, fstype, `swap.size: 0`).
+- Boot **UEFI** (es. Hyper-V Gen2, e la gran parte dell'hardware server
+  moderno): entrambe le topologie impostano `grub_device: true` sulla
+  partizione ESP oltre che sul disco — senza, Subiquity rifiuta l'intera
+  installazione con "autoinstall config did not create needed bootloader
+  partition" (mai emerso nei primi test, tutti su boot BIOS legacy).
+- Validato su hardware reale (HP Z8 G4, VM Hyper-V Gen2): installazione
+  a 2 dischi completa senza errori (partizionamento, grub, Datastore
+  montato via late-commands); il rientro SSH dopo il reboot non è ancora
+  confermato in modo affidabile nell'ambiente di test — vedi
+  [`logbook-fase2.md`](logbook-fase2.md) per lo stato aggiornato.
+- Dettagli di design e ricerca (schema `match` di Subiquity, scelta
+  XFS/mountpoint) in [`logbook-fase2.md`](logbook-fase2.md).
 
 ## Riferimenti
 

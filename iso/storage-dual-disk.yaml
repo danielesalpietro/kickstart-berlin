@@ -1,0 +1,87 @@
+    # Topologia "dual": due dischi fisici. Sistema (EFI + root) sul disco
+    # più piccolo (euristica: su un nodo GPU il disco boot è tipicamente
+    # più piccolo dello storage dati; da riconfermare con test reali,
+    # vedi logbook-fase1.md), Datastore Grastorp sull'altro disco intero.
+    #
+    # "match: {size: smallest}" esclude automaticamente il disco/chiavetta
+    # di installazione (install-media) dal match, per costruzione della
+    # feature - vedi Autoinstall configuration reference (Subiquity). La
+    # seconda azione "disk" con "match: {}" prende per esclusione l'unico
+    # disco rimasto non ancora assegnato: se in fase di installazione
+    # risultasse un solo disco reale disponibile, questa azione fallisce
+    # l'installazione invece di procedere in modo scorretto (fail-fast
+    # intenzionale: usare la topologia "single" in quel caso).
+    swap:
+      size: 0
+    config:
+      - type: disk
+        id: system-disk
+        match:
+          size: smallest
+        ptable: gpt
+        wipe: superblock
+        grub_device: true
+
+      # Partizione BIOS Boot: vedi storage-single-disk.yaml per il
+      # dettaglio del problema (grub-install i386-pc fallisce su GPT
+      # senza, in boot non-UEFI).
+      - type: partition
+        id: bios-boot-partition
+        device: system-disk
+        size: 1M
+        flag: bios_grub
+
+      # "grub_device: true" qui: vedi storage-single-disk.yaml per il
+      # dettaglio (necessario su UEFI, senza Subiquity rifiuta l'intera
+      # config con "autoinstall config did not create needed bootloader
+      # partition").
+      - type: partition
+        id: efi-partition
+        device: system-disk
+        size: 512M
+        flag: boot
+        grub_device: true
+
+      - type: format
+        id: efi-format
+        volume: efi-partition
+        fstype: fat32
+
+      - type: mount
+        id: efi-mount
+        device: efi-format
+        path: /boot/efi
+
+      - type: partition
+        id: root-partition
+        device: system-disk
+        size: -1
+
+      - type: format
+        id: root-format
+        volume: root-partition
+        fstype: ext4
+
+      - type: mount
+        id: root-mount
+        device: root-format
+        path: /
+
+      - type: disk
+        id: datastore-disk
+        match: {}
+        ptable: gpt
+        wipe: superblock
+
+      - type: partition
+        id: datastore-partition
+        device: datastore-disk
+        size: -1
+
+      - type: format
+        id: datastore-format
+        volume: datastore-partition
+        fstype: __DATASTORE_FILESYSTEM__
+        label: __DATASTORE_LABEL__
+      # NOTA: nessuna azione "mount" qui per il Datastore, stesso motivo
+      # della topologia "single" — vedi storage-single-disk.yaml.

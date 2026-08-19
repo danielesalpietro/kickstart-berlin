@@ -1,9 +1,11 @@
 #cloud-config
-# autoinstall (Subiquity) per la Fase 1 — vedi README e issue #1.
+# autoinstall (Subiquity) per le Fasi 1-2 — vedi README, issue #1, #2.
 #
-# Questo file è un template: il placeholder __SSH_AUTHORIZED_KEY__ viene
-# sostituito da scripts/build-iso.sh con la chiave pubblica passata a
-# build-time (opzione -k/--ssh-key). Nessuna chiave è hardcoded qui.
+# Questo file è un template: i placeholder __SSH_AUTHORIZED_KEY__ e
+# __STORAGE_CONFIG__ vengono sostituiti da scripts/build-iso.sh coi
+# valori passati/derivati a build-time (chiave SSH, topologia disco,
+# default in config/autoinstall-defaults.json). Nessuna chiave è
+# hardcoded qui.
 autoinstall:
   version: 1
 
@@ -36,17 +38,20 @@ autoinstall:
     authorized-keys:
       - "__SSH_AUTHORIZED_KEY__"
 
-  # Schema di partizionamento minimale per la Fase 1 (installazione base
-  # non interattiva). Lo schema definitivo a due partizioni (sistema +
-  # storage dedicato al Datastore Grastorp) è oggetto della Fase 2
-  # (issue #2) e sostituirà questo layout.
-  storage:
-    layout:
-      name: lvm
+  # Partizionamento a azioni esplicite (Fase 2, issue #2): sistema (EFI +
+  # root, size configurabile) + partizione dati XFS per il Datastore
+  # Grastorp. Il frammento esatto (topologia a 1 o 2 dischi fisici) viene
+  # scelto e iniettato da scripts/build-iso.sh — vedi
+  # iso/storage-single-disk.yaml e iso/storage-dual-disk.yaml.
+  storage: __STORAGE_CONFIG__
 
+  # "updates: security" e' la chiave nativa Subiquity per gli update di
+  # sicurezza (equivalente autoinstall dei moduli cloud-init generici
+  # "package_update"/"package_upgrade", rimossi: non sono chiavi
+  # riconosciute a livello autoinstall - Subiquity emette un warning
+  # "Unrecognized top-level key" e segnala che diventera' un errore
+  # nelle versioni future).
   updates: security
-  package_update: true
-  package_upgrade: false
   packages:
     - openssh-server
     # NOTA: "hyperv-daemons" (comodita' di solo testing, per vedere IP/
@@ -73,5 +78,24 @@ autoinstall:
       curtin in-target --target=/target -- sh -c
       'echo "admin ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-admin-nopasswd
       && chmod 0440 /etc/sudoers.d/90-admin-nopasswd'
+
+    # Monta il Datastore Grastorp (partizione __DATASTORE_FILESYSTEM__,
+    # formattata nello storage.config con label __DATASTORE_LABEL__).
+    # Path finale a convenzione ESXi-style: __DATASTORE_MOUNT_ROOT__/<UUID
+    # reale generata da mkfs>, con symlink leggibile fisso
+    # __DATASTORE_MOUNT_ROOT__/__DATASTORE_SYMLINK_NAME__ -> quella UUID.
+    # La UUID non è prevedibile a design-time (mkfs la genera in fase di
+    # storage.config), quindi il mount va fatto qui via fstab invece che
+    # con una azione "mount" statica — stesso procedimento manuale
+    # documentato da Vast.ai per /var/lib/docker (mkfs -> blkid -> fstab),
+    # solo automatizzato.
+    - >-
+      curtin in-target --target=/target -- sh -c
+      'set -e;
+      DEV=$(blkid -L "__DATASTORE_LABEL__");
+      DS_UUID=$(blkid -s UUID -o value "$DEV");
+      mkdir -p "__DATASTORE_MOUNT_ROOT__/$DS_UUID";
+      echo "UUID=$DS_UUID __DATASTORE_MOUNT_ROOT__/$DS_UUID __DATASTORE_FILESYSTEM__ defaults 0 2" >> /etc/fstab;
+      ln -s "$DS_UUID" "__DATASTORE_MOUNT_ROOT__/__DATASTORE_SYMLINK_NAME__"'
 
   shutdown: reboot
