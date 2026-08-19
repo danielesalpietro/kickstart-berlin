@@ -12,7 +12,9 @@ all'integrazione in [Grastorp](https://github.com/danielesalpietro/grastorp).
 > Datastore); resta da confermare in modo affidabile il rientro SSH dopo
 > il reboot nell'ambiente di test Hyper-V (probabile problema
 > d'infrastruttura di test, non della logica d'installazione — vedi
-> [`logbook-fase2.md`](logbook-fase2.md)). Le altre fasi sono ancora da
+> [`logbook-fase2.md`](logbook-fase2.md)). Fase 3 (storage Docker sul
+> Datastore) implementata, in attesa di boot test reale — vedi
+> [`logbook-fase3.md`](logbook-fase3.md). Le altre fasi sono ancora da
 > fare.
 
 ## Perché
@@ -54,7 +56,7 @@ equivalente per un nodo Grastorp.
 |---|---|---|---|---|
 | 1 | Sistema operativo | Ubuntu Server 22.04/24.04 da ISO ufficiale | Stessa base OS, via `autoinstall` invece di installazione manuale interattiva | **Fatto** ([#1](https://github.com/danielesalpietro/kickstart-berlin/issues/1)) |
 | 2 | Partizionamento disco | `/` ext4 (~100GB) + resto disco separato (xfs, non montato) | Stesso schema: partizione di sistema + partizione dedicata allo storage (Datastore Grastorp) | **In corso** ([#2](https://github.com/danielesalpietro/kickstart-berlin/issues/2)) |
-| 3 | Preparazione storage | Estensione LVM, rimozione loopback Docker, dati Docker sul filesystem principale | Stesso fix, necessario ugualmente per non limitare la Model Library di Grastorp a un loopback | Da fare |
+| 3 | Preparazione storage | Estensione LVM, rimozione loopback Docker, dati Docker sul filesystem principale | Adattato: nessuna estensione LVM (non prevista dalla guida ufficiale Vast.ai, seguita strettamente — vedi `logbook-fase3.md`), Docker configurato sul Datastore ESX-style con symlink di compatibilità da `/var/lib/docker` | **In corso** ([#3](https://github.com/danielesalpietro/kickstart-berlin/issues/3)) |
 | 4 | Driver NVIDIA + Container Toolkit | Driver pinnato (es. 535) + NVIDIA Container Toolkit da repo ufficiale | Identico: prerequisito già documentato nel README di Grastorp | Da fare |
 | 5 | Docker | Install da `get.docker.com`, config con runtime NVIDIA | Identico | Da fare |
 | 6 | Rete | DHCP via Netplan, DNS pubblici, hostname | Identico, propedeutico al rilevamento NIC di Grastorp ([grastorp#11](https://github.com/danielesalpietro/grastorp/issues/11)) | Da fare |
@@ -141,6 +143,31 @@ equivalente per un nodo Grastorp.
   [`logbook-fase2.md`](logbook-fase2.md) per lo stato aggiornato.
 - Dettagli di design e ricerca (schema `match` di Subiquity, scelta
   XFS/mountpoint) in [`logbook-fase2.md`](logbook-fase2.md).
+
+## Fase 3 — preparazione storage: Docker sul Datastore
+
+- `postinstall/setup.sh` — primo script post-install idempotente
+  (systemd oneshot al primo boot, `postinstall/
+  kickstart-berlin-postinstall.service`): prepara `/etc/docker/
+  daemon.json` con `data-root` dentro il Datastore
+  (`/grastorp/volumes/datastore/docker`) prima ancora che Docker sia
+  installato (Fase 5). Cresce con le fasi successive (4-9, 12-14) come
+  nuove funzioni nello stesso file, non un file per fase.
+- **Nessuna estensione LVM**: la guida host-setup ufficiale di Vast.ai
+  non la prevede (partizioni dirette, come il nostro `storage.config` di
+  Fase 2) — il riferimento LVM nel testo originale dell'issue #3 viene
+  dallo script community citato come fonte secondaria, non dalla guida
+  ufficiale seguita qui. Dettaglio della decisione in
+  [`logbook-fase3.md`](logbook-fase3.md).
+- **Compatibilità Vast.ai ↔ ESX-style**: `/var/lib/docker` diventa un
+  symlink verso il Datastore (Vast.ai monta lì la propria partizione
+  dati direttamente; noi restiamo sulla convenzione ESX-style di Fase
+  2) — qualunque tooling che si aspetti il path standard continua a
+  funzionare. Gestisce anche la migrazione di dati Docker già esistenti
+  fuori ordine, per idempotenza.
+- `scripts/boot-test-qemu.sh` verifica, dopo il login SSH, che il
+  servizio post-install completi e che `/var/lib/docker`/`daemon.json`
+  risultino coerenti col Datastore.
 
 ## Riferimenti
 
