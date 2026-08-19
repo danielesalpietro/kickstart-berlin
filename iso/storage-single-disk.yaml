@@ -11,6 +11,20 @@
         wipe: superblock
         grub_device: true
 
+      # Partizione BIOS Boot (nessun filesystem, GRUB vi incorpora il
+      # proprio core.img): senza, "grub-install" per la piattaforma
+      # legacy i386-pc fallisce su tabella GPT ("this GPT partition
+      # label contains no BIOS Boot Partition; embedding won't be
+      # possible", scoperto in un boot test QEMU reale in BIOS legacy -
+      # vedi logbook-fase2.md). Necessaria per qualunque boot non-UEFI su
+      # GPT, non solo per il test: va prima delle altre partizioni per
+      # posizionamento convenzionale a inizio disco.
+      - type: partition
+        id: bios-boot-partition
+        device: system-disk
+        size: 1M
+        flag: bios_grub
+
       - type: partition
         id: efi-partition
         device: system-disk

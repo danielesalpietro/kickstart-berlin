@@ -22,6 +22,15 @@
         wipe: superblock
         grub_device: true
 
+      # Partizione BIOS Boot: vedi storage-single-disk.yaml per il
+      # dettaglio del problema (grub-install i386-pc fallisce su GPT
+      # senza, in boot non-UEFI).
+      - type: partition
+        id: bios-boot-partition
+        device: system-disk
+        size: 1M
+        flag: bios_grub
+
       - type: partition
         id: efi-partition
         device: system-disk
