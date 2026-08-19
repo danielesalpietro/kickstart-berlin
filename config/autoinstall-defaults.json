@@ -4,6 +4,7 @@
   "ubuntu_version": "24.04.2",
 
   "identity": {
+    "$comment": "Valore di riferimento/documentazione: rispecchia quanto hardcoded in iso/user-data, ma non e' (ancora) letto da build-iso.sh ne' agganciato a un flag CLI - a differenza di storage.*, che e' la fonte attiva.",
     "hostname": "kickstart-berlin",
     "username": "admin"
   },

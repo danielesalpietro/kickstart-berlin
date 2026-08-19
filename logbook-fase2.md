@@ -15,16 +15,30 @@ Diario di design e test per la Fase 2. Branch di riferimento:
   `/grastorp/volumes/datastore` → UUID. Nome symlink fisso ("datastore"),
   non parametrizzato a build-time (un solo datastore per nodo in questa
   fase).
-- **Multi-disco/RAID**: la logica "se N dischi extra, scegli il livello
-  di ridondanza adeguato (RAID1/5/6 o EC)" non è esprimibile in modo
+- **Multi-disco/RAID — scope ristretto rispetto alla scelta iniziale**:
+  la prima proposta fatta all'utente prevedeva due opzioni per gestire
+  dischi extra oltre a quello di sistema; l'utente ha scelto
+  esplicitamente "Opzione 1: un unico LVM datastore aggregando **tutti**
+  i dischi extra in un solo volume group". Discutendo poi la ridondanza,
+  è emerso che quella logica ("se N dischi extra, scegli il livello di
+  ridondanza adeguato: RAID1/5/6 o EC") non è esprimibile in modo
   dichiarativo nello `storage.config` di Subiquity/curtin (azioni
   statiche, nessun costrutto condizionale sul conteggio dischi a
-  runtime). Decisione: la ridondanza multi-disco resta fuori scope per
-  questa issue, demandata a uno script post-install dinamico (Fase 3,
+  runtime). **La soluzione implementata di conseguenza è più stretta
+  della scelta LVM originale**: gestisce esattamente 1 o 2 dischi totali
+  (`--disks 1|2`), senza alcuna aggregazione LVM e senza supporto per
+  N>2 dischi extra — non solo la ridondanza, ma anche la semplice
+  aggregazione multi-disco è stata rimandata. La ridondanza vera e
+  propria resta demandata a uno script post-install dinamico (Fase 3,
   issue #3) dove la logica condizionale è banale in bash. Coerente con
   come Vast.ai stesso gestisce il proprio equivalente (`/var/lib/docker`
   su partizione singola o "RAID array" già pronto a monte — il loro
   installer non orchestra RAID).
+- **Aperto, non risposto**: chiesto esplicitamente all'utente se per la
+  ridondanza di Fase 3 preferisse mdadm+LVM+ext4 (RAID Linux standard)
+  o ZFS RAIDZ (checksum end-to-end, utile contro il bitrot sui blob del
+  Model Library) — domanda respinta ("aspetta prossima istruzione").
+  **Resta da decidere prima di iniziare la Fase 3.**
 - Riferimento primario usato per la conferma dello schema Vast.ai (EFI +
   root ext4 ≥80GB + resto XFS su `/var/lib/docker`, tre varianti manuale/
   auto/fallback loopback): guida host-setup ufficiale, fornita
@@ -134,6 +148,24 @@ rete verso gli archivi Ubuntu bloccata dal proxy del sandbox — vedi
 `logbook-fase1.md`). Boot test in QEMU/TCG del solo scenario a 1 disco
 (il 2 dischi richiede la stessa catena di fix, non ancora rieseguito
 dopo l'ultimo fix — vedi prossimi passi).
+
+**Nota (collaborazione in parallelo)**: durante questa serie di fix,
+un'altra sessione ha lavorato in parallelo sullo stesso branch,
+estendendo `scripts/boot-test-hyperv.ps1` con supporto a due VHD di
+dimensione diversa (commit `39bb6d1`, `-DiskGB`/`-DiskGB2`). Il `git
+push` di questa sessione è stato respinto (remote aggiornato nel
+frattempo), risolto con `git pull --rebase`. Quel commit segnalava un
+gap reale nel lato QEMU: `scripts/boot-test-qemu.sh --disks 2` creava
+due dischi virtuali **della stessa dimensione**, quindi non esercitava
+davvero l'euristica "disco più piccolo = sistema" di
+`storage-dual-disk.yaml` (con dischi identici, `match: {size:
+smallest}` è arbitraria). Fix (commit `6f69f53`): nuovo flag
+`--disk2-size` (default 40G, contro i 20G del primo — stessi default
+usati da `boot-test-hyperv.ps1` per coerenza tra i due script), con
+errore esplicito se uguale a `--disk-size` invece di un test che
+"passa" senza aver verificato nulla; aggiunto anche un controllo
+informativo post-test sulla dimensione del device root per confermare
+indirettamente che il sistema sia finito sul disco piccolo atteso.
 
 1. **Label XFS troppo lunga** (segnalato dall'utente prima del primo
    boot test): `grastorp-datastore` (18 caratteri) supera il limite di
