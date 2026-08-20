@@ -185,6 +185,11 @@ disponibile dal 23/08, o un'istanza GPU cloud dedicata).
       Pod containerizzati con driver già gestito dall'host, non adatto a
       testare la nostra installazione da zero — vedi discussione in
       sessione).
-- [ ] Aprire la PR quando: verificato il percorso driver+GPU su hardware
-      reale (unico punto ancora aperto della DoD completa dell'issue #4;
-      il Container Toolkit su rete diretta è ora confermato).
+- [x] Aprire la PR — **PR #19 aperta e mergiata in `develop`**
+      (2026-08-19/20), senza attendere la conferma driver+GPU su
+      hardware reale (decisione presa in corso d'opera: il codice era
+      comunque verificato su tutto ciò di verificabile senza GPU fisica,
+      e il punto rimasto aperto — driver+GPU reale — resta tracciato qui
+      sotto, non blocca il merge). Questa nota corregge il testo
+      originale sopra, che presupponeva l'attesa della conferma GPU
+      prima della PR.

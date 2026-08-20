@@ -113,5 +113,7 @@ solo con dati reali invece che vuoti/assenti. Pulizia post-test
 - [ ] Confermare `nvidia_gpu` con una GPU reale presente (Z8 o istanza
       dedicata) — qui verificato solo il percorso di fallback corretto
       in assenza di GPU.
-- [ ] Aprire la PR (la raccolta dati è ora confermata su host reale;
-      resta aperta solo la conferma col campo `nvidia_gpu` popolato).
+- [x] Aprire la PR — **PR #22 aperta e mergiata** (nello stack
+      `fase6 → fase8`, non ancora in `develop` — vedi README per lo
+      stato di consolidamento dei branch), senza attendere `nvidia_gpu`
+      popolato (non bloccante).

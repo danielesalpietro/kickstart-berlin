@@ -5,14 +5,20 @@ boot fino a un host pronto (OS, driver NVIDIA, Docker, rete, benchmark
 hardware). Base derivata dal flusso di setup host di **Vast.ai**, propedeutica
 all'integrazione in [Grastorp](https://github.com/danielesalpietro/grastorp).
 
-> Stato: **early stage**. Fasi 1-5 implementate e validate end-to-end su
-> hardware/rete reali (CI, Hyper-V, VM Azure con KVM reale) — vedi
-> [`logbook-fase1.md`](logbook-fase1.md) … [`logbook-fase5.md`](logbook-fase5.md)
-> per il dettaglio di ciascuna. Fase 6 (rete) implementata, in attesa di
-> conferma su host reale — vedi [`logbook-fase6.md`](logbook-fase6.md).
-> Resta sospesa, per tutte le fasi che la richiedono, la conferma finale
-> su hardware fisico con GPU reale (HP Z8 G4, non disponibile fino al
-> 23/08). Le fasi successive sono ancora da fare.
+> Stato: **early stage**. Fasi 1, 2, 3, 5, 6, 8 implementate e validate
+> end-to-end su hardware/rete reali (CI, Hyper-V, VM Azure con KVM
+> reale). Fase 4 (driver NVIDIA) implementata e validata su rete reale
+> per la parte non-GPU (Container Toolkit); manca solo la conferma con
+> una GPU fisicamente presente. Fase 7 (daemon host Vast.ai reale) ha
+> cambiato scope in corsa — vedi sotto — implementata e con i percorsi
+> sintetici confermati su host reale, in attesa che l'utente fornisca un
+> comando d'installazione reale per il test finale. Vedi
+> [`logbook-fase1.md`](logbook-fase1.md) … [`logbook-fase8.md`](logbook-fase8.md)
+> per il dettaglio di ciascuna fase. Resta sospesa, per tutte le fasi che
+> la richiedono, la conferma finale con una GPU NVIDIA fisicamente
+> presente (HP Z8 G4, non disponibile fino al 23/08, o un'istanza GPU
+> cloud dedicata). Le fasi 9, 11, 12, 14 sono ancora da fare; le fasi 10
+> e 13 sono fuori scope iniziale (vedi tabella sotto).
 
 ## Perché
 
@@ -52,13 +58,13 @@ equivalente per un nodo Grastorp.
 | # | Fase (Vast.ai) | Cosa fa Vast.ai | Equivalente kickstart-berlin / Grastorp | Stato |
 |---|---|---|---|---|
 | 1 | Sistema operativo | Ubuntu Server 22.04/24.04 da ISO ufficiale | Stessa base OS, via `autoinstall` invece di installazione manuale interattiva | **Fatto** ([#1](https://github.com/danielesalpietro/kickstart-berlin/issues/1)) |
-| 2 | Partizionamento disco | `/` ext4 (~100GB) + resto disco separato (xfs, non montato) | Stesso schema: partizione di sistema + partizione dedicata allo storage (Datastore Grastorp) | **In corso** ([#2](https://github.com/danielesalpietro/kickstart-berlin/issues/2)) |
-| 3 | Preparazione storage | Estensione LVM, rimozione loopback Docker, dati Docker sul filesystem principale | Adattato: nessuna estensione LVM (non prevista dalla guida ufficiale Vast.ai, seguita strettamente — vedi `logbook-fase3.md`), Docker configurato sul Datastore ESX-style con symlink di compatibilità da `/var/lib/docker` | **In corso** ([#3](https://github.com/danielesalpietro/kickstart-berlin/issues/3)) |
-| 4 | Driver NVIDIA + Container Toolkit | Driver pinnato (es. 535) + NVIDIA Container Toolkit da repo ufficiale | Adattato: nessuna versione pinnata (non richiesta dalla guida ufficiale Vast.ai, seguita strettamente — vedi `logbook-fase4.md`), driver auto-rilevato via `ubuntu-drivers autoinstall` | **In corso** ([#4](https://github.com/danielesalpietro/kickstart-berlin/issues/4)) |
-| 5 | Docker | Install da `get.docker.com`, config con runtime NVIDIA | Identico | **In corso** ([#5](https://github.com/danielesalpietro/kickstart-berlin/issues/5)) |
-| 6 | Rete | DHCP via Netplan, DNS pubblici, hostname | Identico, propedeutico al rilevamento NIC di Grastorp ([grastorp#11](https://github.com/danielesalpietro/grastorp/issues/11)); range di porte TCP+UDP aperto su ufw se attivo (guida ufficiale Vast.ai) | **In corso** ([#6](https://github.com/danielesalpietro/kickstart-berlin/issues/6)) |
-| 7 | Installazione daemon del provider | Wizard ufficiale Vast.ai (Kaalia daemon) + API key utente | **Sostituito**: qui va installato il backend/agent Grastorp stesso (Docker Compose), non un daemon di terzi | Da fare |
-| 8 | Raccolta info hardware | `dmidecode` + permessi sudo dedicati, usato per popolare il "machine info" del marketplace | **Riusato as-is**: stesso meccanismo alla base del node profiling di Grastorp ([grastorp#14](https://github.com/danielesalpietro/grastorp/issues/14)) — permessi sudo dedicati non necessari (l'admin ha già NOPASSWD completo) | **In corso** ([#8](https://github.com/danielesalpietro/kickstart-berlin/issues/8)) |
+| 2 | Partizionamento disco | `/` ext4 (~100GB) + resto disco separato (xfs, non montato) | Stesso schema: partizione di sistema + partizione dedicata allo storage (Datastore Grastorp) | **Fatto** ([#2](https://github.com/danielesalpietro/kickstart-berlin/issues/2), PR [#17](https://github.com/danielesalpietro/kickstart-berlin/pull/17) mergiata — resta un punto aperto non bloccante, vedi `logbook-fase2.md`) |
+| 3 | Preparazione storage | Estensione LVM, rimozione loopback Docker, dati Docker sul filesystem principale | Adattato: nessuna estensione LVM (non prevista dalla guida ufficiale Vast.ai, seguita strettamente — vedi `logbook-fase3.md`), Docker configurato sul Datastore ESX-style con symlink di compatibilità da `/var/lib/docker` | **Fatto** ([#3](https://github.com/danielesalpietro/kickstart-berlin/issues/3), PR [#18](https://github.com/danielesalpietro/kickstart-berlin/pull/18) mergiata) |
+| 4 | Driver NVIDIA + Container Toolkit | Driver pinnato (es. 535) + NVIDIA Container Toolkit da repo ufficiale | Adattato: nessuna versione pinnata (non richiesta dalla guida ufficiale Vast.ai, seguita strettamente — vedi `logbook-fase4.md`), driver auto-rilevato via `ubuntu-drivers autoinstall` | **Fatto** ([#4](https://github.com/danielesalpietro/kickstart-berlin/issues/4), PR [#19](https://github.com/danielesalpietro/kickstart-berlin/pull/19) mergiata — resta sospesa la conferma con una GPU reale, vedi `logbook-fase4.md`) |
+| 5 | Docker | Install da `get.docker.com`, config con runtime NVIDIA | Identico | **In corso** ([#5](https://github.com/danielesalpietro/kickstart-berlin/issues/5), PR [#20](https://github.com/danielesalpietro/kickstart-berlin/pull/20) mergiata a monte, non ancora in `develop`) |
+| 6 | Rete | DHCP via Netplan, DNS pubblici, hostname | Identico, propedeutico al rilevamento NIC di Grastorp ([grastorp#11](https://github.com/danielesalpietro/grastorp/issues/11)); range di porte TCP+UDP aperto su ufw se attivo (guida ufficiale Vast.ai) | **In corso** ([#6](https://github.com/danielesalpietro/kickstart-berlin/issues/6), PR [#21](https://github.com/danielesalpietro/kickstart-berlin/pull/21) mergiata a monte, non ancora in `develop`) |
+| 7 | Installazione daemon del provider | Wizard ufficiale Vast.ai (Kaalia daemon) + API key utente | **Riordinato** (deciso con l'utente, 2026-08-20): si valida prima il nodo come host Vast.ai reale e completo (daemon ufficiale installato a mano dall'operatore), per confermare la piena compatibilità dello stack — l'evoluzione verso il backend/agent Grastorp resta il passo successivo, non sostituisce più questa fase (vedi `logbook-fase7.md`) | **In corso** ([#7](https://github.com/danielesalpietro/kickstart-berlin/issues/7), branch `claude/fase7-vastai-daemon-real`, non ancora in PR — in attesa di un comando d'installazione reale) |
+| 8 | Raccolta info hardware | `dmidecode` + permessi sudo dedicati, usato per popolare il "machine info" del marketplace | **Riusato as-is**: stesso meccanismo alla base del node profiling di Grastorp ([grastorp#14](https://github.com/danielesalpietro/grastorp/issues/14)) — permessi sudo dedicati non necessari (l'admin ha già NOPASSWD completo) | **In corso** ([#8](https://github.com/danielesalpietro/kickstart-berlin/issues/8), PR [#22](https://github.com/danielesalpietro/kickstart-berlin/pull/22) mergiata a monte, non ancora in `develop`) |
 | 9 | Manutenzione | Timer systemd per pulizia oraria container/immagini inutilizzati | Riusabile as-is | Da fare |
 | 10 | CLI del provider | Install CLI Vast.ai, config con API key | **Sostituito/opzionale**: solo se si integrano RunPod/Vast.ai come target di deploy remoto ([grastorp#15](https://github.com/danielesalpietro/grastorp/issues/15)), non è un prerequisito del nodo locale | Fuori scope iniziale |
 | 11 | Self-test/benchmark | Speedtest di rete + verifica GPU/RAM/rete, esito inviato al backend Vast.ai | **Sostituito**: qui è l'assessment one-shot di Grastorp (stile Windows Experience Index, vedi [grastorp#14](https://github.com/danielesalpietro/grastorp/issues/14)), non inviato a nessun backend esterno | Da fare |
@@ -73,10 +79,17 @@ equivalente per un nodo Grastorp.
   base non interattivi.
 - **Script post-install**: uno script idempotente (stile
   `vastai-host-setup/setup.sh`, ma senza le parti specifiche Vast.ai) per le
-  fasi 3-9 e 12-14, eseguito al primo boot via systemd unit oneshot.
-- **Nessun daemon proprietario di terzi**: al posto del Kaalia daemon (fase
-  7) e della CLI/listing Vast.ai (fasi 10/13), il post-install porta
-  direttamente all'avvio di Grastorp via `docker compose up`.
+  fasi 3-6, 8-9 e 12-14, eseguito al primo boot via systemd unit oneshot.
+- **Fase 7 (daemon del provider), riordinata** (deciso con l'utente,
+  2026-08-20): prima si valida il nodo come host Vast.ai reale (daemon
+  ufficiale, installato a mano dall'operatore — script separato, mai
+  automatico, vedi Fase 7 sotto), per confermare che l'intero stack sia
+  compatibile end-to-end con l'ecosistema Vast.ai. Solo dopo questa
+  conferma si evolve verso l'avvio diretto di Grastorp via
+  `docker compose up` al posto del daemon Vast.ai — non più un
+  "sostituto" immediato, ma il passo successivo alla validazione as-is.
+  La CLI/listing Vast.ai (fasi 10/13) restano fuori scope per il nodo
+  locale.
 
 ## Fase 1 — build dell'ISO autoinstall
 
@@ -232,16 +245,50 @@ equivalente per un nodo Grastorp.
 - **Scope deliberatamente limitato**: DHCP è già il default Ubuntu
   Server, l'hostname univoco è già gestito in Fase 3. Il meccanismo
   vast.ai-specifico di config del proprio daemon
-  (`/var/lib/vastai_kaalia/host_port_range`) non ha un equivalente qui
-  (quel daemon non è installato — Fase 7 lo sostituisce col backend
-  Grastorp, non ancora implementato); l'override IP non ha un requisito
-  Grastorp concreto ad oggi; il test di velocità appartiene a Fase 11,
-  non qui. Dettaglio in [`logbook-fase6.md`](logbook-fase6.md).
+  (`/var/lib/vastai_kaalia/host_port_range`) non ha un equivalente
+  automatizzato qui — se il vero daemon Vast.ai viene installato (Fase
+  7), quel file va scritto a mano dall'operatore con lo stesso range
+  configurato qui; l'override IP non ha un requisito Grastorp concreto
+  ad oggi; il test di velocità appartiene a Fase 11, non qui.
+- **Verificato su host reale** (VM Azure, `ufw` vero non uno stub):
+  regole aggiunte correttamente (TCP+UDP, IPv4+IPv6), idempotenza
+  confermata, accesso SSH verificato intatto dopo l'enable di `ufw`.
+  Dettaglio in [`logbook-fase6.md`](logbook-fase6.md).
+
+## Fase 7 — daemon host Vast.ai reale (validazione as-is)
+
+*(Non ancora in PR verso `develop` — branch
+`claude/fase7-vastai-daemon-real`, in attesa di un comando
+d'installazione reale fornito dall'utente.)*
+
+- Nuovo script standalone `postinstall/install-vastai-host.sh`,
+  **deliberatamente escluso** dalla sequenza automatica di
+  `postinstall/setup.sh` — va lanciato a mano dall'operatore
+  (`sudo ./install-vastai-host.sh --command-file <path>`), mai al primo
+  boot: il comando ufficiale d'installazione del daemon Vast.ai
+  (`cloud.vast.ai/host/setup`) è specifico dell'account e valido solo
+  un'ora dalla generazione, non incorporabile nell'ISO né sincronizzabile
+  con un boot automatico.
+- **Cambio di direzione** (deciso con l'utente, 2026-08-20): si valida
+  prima il nodo come host Vast.ai reale e completo, per confermare che
+  l'intero stack costruito finora (Datastore ESX-style, Docker, driver
+  NVIDIA, rete) sia davvero compatibile end-to-end — l'evoluzione verso
+  il backend/agent Grastorp resta il passo successivo, non sostituisce
+  più questa fase. Il layer ESX-style di Fase 2/3 (symlink
+  `/var/lib/docker`) è stato pensato fin dall'inizio per restare
+  compatibile con questo scenario, nessuna modifica retroattiva
+  necessaria.
+- Il file col comando (contiene l'identità dell'account) non viene mai
+  passato come argomento diretto (shell history) e viene distrutto
+  (`shred -u`) subito dopo l'uso; il comando stesso non finisce mai nei
+  log. Dettaglio in [`logbook-fase7.md`](logbook-fase7.md).
+- **Verificato su host reale** (VM Azure): tutti i percorsi sintetici
+  (validazione argomenti, distruzione del file, comando fittizio)
+  confermati sia in sandbox sia su host reale.
+- **Limite noto**: non testabile end-to-end con un comando reale — richiede
+  un account host Vast.ai loggato, va fornito dall'utente quando pronto.
 
 ## Fase 8 — raccolta informazioni hardware
-
-*(Fase 7, installazione backend/agent Grastorp, saltata per ora — su
-richiesta esplicita, non ancora implementata.)*
 
 - `postinstall/setup.sh` — nuova `phase8_hardware_info()`: raccoglie
   `dmidecode` (system/baseboard/memory/processor), `lscpu`, `lspci`,

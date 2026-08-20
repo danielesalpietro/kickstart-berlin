@@ -464,3 +464,6 @@ stato già corretto (`/etc/docker/daemon.json`, symlink `/var/lib/docker`)
 - [ ] Verificare lo scenario CI GitHub Actions reale (`workflow_dispatch`)
       con tutti i fix di questa sessione, per un secondo riscontro
       indipendente dall'ambiente Azure annidato.
+- [x] Aprire la PR — **PR #18 aperta e mergiata in `develop`**
+      (2026-08-19/20), senza attendere gli altri punti sopra (non
+      bloccanti).

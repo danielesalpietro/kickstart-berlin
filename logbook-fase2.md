@@ -401,7 +401,7 @@ isolato o sistematico.
 - [ ] Verifica su hardware fisico multi-disco reale — manuale, fuori
       scope di questa fase di sviluppo.
 
-## Prossimi passi
+## Prossimi passi (storico, superato — vedi nota sotto)
 
 - [ ] Capire se il mancato ritorno SSH post-reboot (dual-disk, Hyper-V)
       è un blocco isolato o sistematico (retry in corso) — se
@@ -410,13 +410,29 @@ isolato o sistematico.
 - [ ] Ripetere lo stesso test anche per lo scenario a 1 disco (qui non
       ancora rieseguito con i fix di questa sessione: encoding
       PowerShell, `grub_device` su ESP — quest'ultimo rilevante anche lì).
-- [ ] Ammorbidire o approfondire il controllo dimensione ISO in
-      `build-iso.sh` (falso positivo trovato in questa sessione, rischia
-      di bloccare CI con build in realtà valide).
+- [x] Ammorbidire o approfondire il controllo dimensione ISO in
+      `build-iso.sh` — risolto: sostituito con verifica di contenuto
+      (`xorriso -find`), vedi sopra.
 - [ ] Eseguire lo scenario CI reale (`workflow_dispatch`, rete diretta
       GitHub Actions) per un secondo riscontro indipendente.
-- [ ] Aprire la PR quando il ciclo completo (incluso reboot+SSH) è
-      confermato per entrambi gli scenari.
+- [x] Aprire la PR — **PR #17 aperta e mergiata in `develop`**
+      (2026-08-19), con la nota sul mancato ritorno SSH post-reboot
+      esplicitamente documentata come non bloccante (vedi corpo della
+      PR). Vedi nota di chiusura sotto per lo stato completo.
+
+## 2026-08-20 — Stato di chiusura della fase
+
+PR #17 (Fase 2) mergiata in `develop`. Il bug critico `grub_device`
+(sopra) è stato trovato e risolto **dopo** l'apertura di questa PR, in
+una sessione successiva — la decisione "solo UEFI" e la rimozione del
+supporto BIOS legacy si applicano quindi retroattivamente anche a
+quanto già mergiato qui (nessuna PR separata per Fase 2 dopo il fix: il
+fix è stato incluso nel branch di Fase 3, che parte dalla punta di
+questo). Il punto "mancato ritorno SSH post-reboot dual-disk Hyper-V" **non
+è stato riconfermato/chiuso esplicitamente dopo il fix** — resta uno
+stato aperto ma non tracciato più in questo file (nessun test di
+follow-up documentato); da verificare se ricapita in un prossimo test
+reale multi-disco.
 
 ## 2026-08-19 — Bug critico: `grub_device` su disco+ESP rompeva il boot BIOS legacy (nuova sessione, sandbox)
 
