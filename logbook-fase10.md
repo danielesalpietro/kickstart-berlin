@@ -48,6 +48,44 @@ non trovato dopo l'installer" cercando l'eseguibile sotto la home e
 collegandolo in `/usr/local/bin`. Non verificabile end-to-end senza un
 host reale con accesso a `vast.ai`.
 
+## 2026-08-20 — Aggiornamento: `install.sh` reale fornito dall'utente
+
+L'utente ha caricato direttamente il file `install.sh` (non fetchabile
+da questa sessione, vedi sopra) — permette di sostituire la supposizione
+del paragrafo precedente con dati reali, letti dal codice sorgente:
+
+- Il binario stabile che l'installer crea è un symlink in
+  **`$HOME/.local/bin/vastai`** (`LOCAL_BIN="$HOME/.local/bin"`,
+  `link_swap "$ROOT/bin/vastai" "$LOCAL_BIN/vastai"`) — non sotto
+  `$HOME/.local/share/vastai` (quello è solo `$ROOT`, il runtime interno
+  con Python gestito via `uv`, mai pensato per essere referenziato
+  direttamente).
+- L'aggiunta al PATH avviene **solo** scrivendo una riga in
+  `~/.bashrc`/`~/.zshrc`, e **solo se interattivo** — commento esplicito
+  nel file: *"never written non-interactively/CI"*. La funzione
+  `is_interactive()` controlla l'apertura di `/dev/tty`: sotto un
+  systemd oneshot (nessun terminale di controllo) risulta falsa, quindi
+  in `postinstall/setup.sh` la rc **non viene mai toccata** dall'installer
+  stesso — confermato da codice, non più solo un'ipotesi.
+- Nessun requisito di rete oltre a HTTPS verso `vast.ai/cli/manifest.env`
+  e il download del runtime/wheel; nessun requisito di non-root visibile
+  nel codice (scrive solo sotto `$HOME` e `$HOME/.local/bin`, compatibile
+  con `$HOME=/root` in un postinstall che gira come root).
+- Pagina reale di gestione API key: `https://cloud.vast.ai/manage-keys/?tab=api-keys`
+  (stampata dall'installer stesso a fine esecuzione) — corretto anche nei
+  messaggi di `phase10_vastai_cli()`/`vastai-self-test.sh`, che prima
+  citavano `cloud.vast.ai/account/` (mai verificato, ora sostituito).
+
+**Bug trovato e corretto** in `phase10_vastai_cli()`: il fallback per
+"comando non trovato dopo l'installer" cercava con
+`find ... -type f -name vastai` sotto `.local/share/vastai` — sbagliato
+su due fronti, non solo la directory: `-type f` esclude esplicitamente i
+symlink, e la catena reale di symlink dell'installer
+(`link_swap`, più volte) non produce mai un file regolare con quel nome.
+Sostituito con un controllo diretto su `$HOME/.local/bin/vastai` (il
+percorso stabile e documentato che l'installer stesso crea), con `-e`
+anziché `-type f` per seguire correttamente i symlink.
+
 ## 2026-08-20 — Decisione: perché la CLI può essere automatica e il daemon no
 
 Fase 7 (`install-vastai-host.sh`) resta deliberatamente fuori da
@@ -72,13 +110,17 @@ hardcoded o committato nel repo.
 
 ## Non verificabile in sandbox (per costruzione)
 
-- L'installer reale (`vast.ai/install.sh`) non è mai stato eseguito in
-  questa sessione: dominio bloccato dalla policy di rete. Il
-  comportamento di fallback ("cerca sotto `$HOME/.local/share/vastai`,
-  linka in `/usr/local/bin`") è basato sulla sola dichiarazione del
-  README del repo ufficiale, non su un test diretto dell'installer —
-  da confermare sul primo host reale con accesso a `vast.ai` (VM Azure
-  o Z8).
+- L'installer reale (`vast.ai/install.sh`) non è mai stato **eseguito**
+  in questa sessione: dominio bloccato dalla policy di rete, nessuna
+  connettività verso `vast.ai/cli/manifest.env`/il download del runtime
+  è disponibile qui. Il codice sorgente è però stato letto per intero
+  (fornito dall'utente) e il fallback di `phase10_vastai_cli()` è ora
+  basato su quel codice, non più su un'inferenza dal solo README — resta
+  comunque da confermare **in esecuzione** sul primo host reale con
+  accesso a `vast.ai` (VM Azure o Z8): provisioning del Python gestito
+  via `uv`, download effettivo del manifest/wheel, smoke test
+  `vastai --version` interno all'installer, comportamento di
+  `is_interactive()` sotto il vero systemd oneshot di questo progetto.
 
 ## Prossimi passi
 

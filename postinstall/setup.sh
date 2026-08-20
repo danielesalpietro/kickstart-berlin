@@ -380,22 +380,22 @@ phase10_vastai_cli() {
   curl -fsSL https://vast.ai/install.sh | bash
 
   if ! command -v vastai >/dev/null 2>&1; then
-    # Il README del repo ufficiale (vast-ai/vast-cli) dichiara solo che
-    # l'installer mette la CLI in un runtime isolato sotto
-    # $HOME/.local/share/vastai, senza specificare se aggiunge anche un
-    # symlink su una directory di PATH di sistema o solo una riga nella rc
-    # della shell interattiva - non verificabile da qui (nessun accesso di
-    # rete a vast.ai durante lo sviluppo di questa fase, vedi
-    # logbook-fase10.md). setup.sh gira non interattivo (systemd oneshot,
-    # nessuna rc caricata): se il comando non è già su PATH dopo
-    # l'installer, cerco l'eseguibile sotto la home dell'utente che ha
-    # lanciato il postinstall e lo collego in /usr/local/bin, così resta
-    # disponibile anche per shell successive senza dover ricaricare nulla.
-    local found
-    found="$(find "${HOME:-/root}/.local/share/vastai" -maxdepth 3 -type f -name 'vastai' -perm -u+x 2>/dev/null | head -n1)"
-    if [[ -n "$found" ]]; then
-      ln -sf "$found" /usr/local/bin/vastai
-      log "CLI vastai trovata in ${found}, collegata in /usr/local/bin/vastai."
+    # Letto per intero l'installer ufficiale (vast.ai/install.sh, vedi
+    # logbook-fase10.md): crea il binario stabile come symlink in
+    # $HOME/.local/bin/vastai (mai sotto .local/share/vastai, che è solo
+    # il runtime interno) e aggiunge $HOME/.local/bin al PATH SOLO
+    # modificando la rc della shell interattiva (~/.bashrc/~/.zshrc) -
+    # esplicitamente "never written non-interactively/CI" nei commenti
+    # dell'installer stesso. setup.sh gira non interattivo (systemd
+    # oneshot, nessun /dev/tty): la rc non viene toccata, quindi il
+    # comando non risulta su PATH in questa sessione pur essendo stato
+    # installato - colleghiamo esplicitamente il binario stabile
+    # dell'installer in /usr/local/bin, così resta disponibile anche per
+    # shell successive senza dover ricaricare una rc.
+    local vastai_local_bin="${HOME:-/root}/.local/bin/vastai"
+    if [[ -e "$vastai_local_bin" ]]; then
+      ln -sf "$vastai_local_bin" /usr/local/bin/vastai
+      log "CLI vastai trovata in ${vastai_local_bin}, collegata in /usr/local/bin/vastai."
     fi
   fi
 
@@ -404,7 +404,7 @@ phase10_vastai_cli() {
 
   log "CLI vastai installata: $(vastai --version 2>/dev/null || echo "versione non rilevabile")."
   log "Fase 10 completata. Configura l'API key a mano con: vastai set api-key <la-tua-api-key>" \
-    "(da https://cloud.vast.ai/account/, mai hardcoded/committata nel repo)."
+    "(da https://cloud.vast.ai/manage-keys/?tab=api-keys, mai hardcoded/committata nel repo)."
 }
 
 main() {

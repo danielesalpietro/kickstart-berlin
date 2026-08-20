@@ -72,7 +72,7 @@ command -v vastai >/dev/null 2>&1 \
   || err "CLI vastai non trovata (Fase 10 non eseguita/non riuscita?). Installa con: curl -fsSL https://vast.ai/install.sh | bash"
 
 vastai show user >/dev/null 2>&1 \
-  || err "API key non configurata o non valida: esegui 'vastai set api-key <la-tua-api-key>' (da https://cloud.vast.ai/account/) prima di ripetere il self-test."
+  || err "API key non configurata o non valida: esegui 'vastai set api-key <la-tua-api-key>' (da https://cloud.vast.ai/manage-keys/?tab=api-keys) prima di ripetere il self-test."
 
 log "Eseguo il self-test ufficiale Vast.ai sulla macchina ${MACHINE_ID} ..."
 if ! vastai self-test machine "$MACHINE_ID" "${EXTRA_ARGS[@]}"; then
