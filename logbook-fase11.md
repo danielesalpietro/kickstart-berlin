@@ -100,10 +100,23 @@ Resta bloccato dallo stesso prerequisito già annotato in
 `cloud.vast.ai/host/setup` che confermi un listing riuscito, da cui
 ricavare un `machine_id` reale su cui lanciare questo script.
 
+## 2026-08-20 — Registrato come test case di collaudo funzionale
+
+Su richiesta dell'utente: il repo aveva solo test *automatici* tracciati
+formalmente (CI: `validate-autoinstall`, `build-and-boot-test`) — i test
+che richiedono hardware/account reali restavano sparsi come voci "Da
+fare" nei singoli logbook, senza un elenco unico. Creato
+[`docs/collaudo-funzionale.md`](docs/collaudo-funzionale.md): distingue
+esplicitamente test automatici (CI) da test manuali (checklist per
+operatore su hardware/account reali), consolidando le voci già aperte
+nei logbook delle Fasi 1/3/4/5/7/8/10/11. `./vastai-self-test.sh
+--machine-id <ID>` è la voce Fase 11 di quella checklist.
+
 ## Prossimi passi
 
 - [ ] Eseguire il self-test reale non appena Fase 7 avrà un
       `machine_id` da un listing riuscito (VM Azure o Z8, quando
-      l'utente fornirà il comando d'installazione del daemon).
+      l'utente fornirà il comando d'installazione del daemon) — vedi
+      `docs/collaudo-funzionale.md` per il test case completo.
 - [ ] Aprire/aggiornare la PR includendo Fasi 10 e 11 insieme, dato che
       condividono la stessa dipendenza bloccante.

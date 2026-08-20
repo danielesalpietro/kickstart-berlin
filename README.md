@@ -102,6 +102,9 @@ equivalente per un nodo Grastorp.
 - [`docs/usb-boot.md`](docs/usb-boot.md) — istruzioni per scrivere l'ISO su
   chiavetta USB (`dd`, balenaEtcher/Rufus) e nota su PXE/iPXE come
   alternativa futura.
+- [`docs/collaudo-funzionale.md`](docs/collaudo-funzionale.md) — elenco dei
+  test case, automatici (CI) e manuali (richiedono hardware GPU reale e/o
+  un account Vast.ai reale), con stato aggiornato per fase.
 
 ## Fase 2 — partizionamento disco (sistema + Datastore Grastorp)
 
