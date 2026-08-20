@@ -60,8 +60,8 @@ equivalente per un nodo Grastorp.
 | 7 | Installazione daemon del provider | Wizard ufficiale Vast.ai (Kaalia daemon) + API key utente | **Riordinato**: si valida prima il nodo come host Vast.ai reale (daemon ufficiale, installato a mano dall'operatore) per confermare la piena compatibilità dello stack — l'evoluzione verso il backend/agent Grastorp resta il passo successivo, non sostituisce più questa fase (vedi `logbook-fase7.md`) | **In corso** ([#7](https://github.com/danielesalpietro/kickstart-berlin/issues/7)) |
 | 8 | Raccolta info hardware | `dmidecode` + permessi sudo dedicati, usato per popolare il "machine info" del marketplace | **Riusato as-is**: stesso meccanismo alla base del node profiling di Grastorp ([grastorp#14](https://github.com/danielesalpietro/grastorp/issues/14)) — permessi sudo dedicati non necessari (l'admin ha già NOPASSWD completo) | **In corso** ([#8](https://github.com/danielesalpietro/kickstart-berlin/issues/8)) |
 | 9 | Manutenzione | Timer systemd per pulizia oraria container/immagini inutilizzati | Riusabile as-is | Da fare |
-| 10 | CLI del provider | Install CLI Vast.ai, config con API key | **Sostituito/opzionale**: solo se si integrano RunPod/Vast.ai come target di deploy remoto ([grastorp#15](https://github.com/danielesalpietro/grastorp/issues/15)), non è un prerequisito del nodo locale | Fuori scope iniziale |
-| 11 | Self-test/benchmark | Speedtest di rete + verifica GPU/RAM/rete, esito inviato al backend Vast.ai | **Sostituito**: qui è l'assessment one-shot di Grastorp (stile Windows Experience Index, vedi [grastorp#14](https://github.com/danielesalpietro/grastorp/issues/14)), non inviato a nessun backend esterno | Da fare |
+| 10 | CLI del provider | Install CLI Vast.ai, config con API key | **Riordinato**, stessa logica di Fase 7: installata automaticamente in `setup.sh` (nessun segreto d'account nell'installer), per validare lo stack "as-is" prima dell'evoluzione verso Grastorp/RunPod ([grastorp#15](https://github.com/danielesalpietro/grastorp/issues/15)) | **Fatto** ([#10](https://github.com/danielesalpietro/kickstart-berlin/issues/10)) |
+| 11 | Self-test/benchmark | Speedtest di rete + verifica GPU/RAM/rete, esito inviato al backend Vast.ai | **Riordinato**, stessa logica di Fase 7: `vastai self-test machine <machine_id>` reale (script standalone, a mano dall'operatore dopo un listing riuscito), non l'assessment Grastorp — resta comunque il passo successivo previsto, non sostituito da questa fase (vedi [grastorp#14](https://github.com/danielesalpietro/grastorp/issues/14)) | **Fatto** ([#11](https://github.com/danielesalpietro/kickstart-berlin/issues/11)) |
 | 12 | Port forwarding | Range di porte da aprire manualmente sul router, mostrato all'utente | Stesso principio, range di porte adattato ai deployment Grastorp invece che al range Vast.ai (16384-32768) | Da fare |
 | 13 | Listing marketplace | Pubblicazione della macchina sul marketplace Vast.ai (prezzo, durata) | **Non applicabile** al nodo locale; diventa rilevante solo per l'integrazione provider di [grastorp#15](https://github.com/danielesalpietro/grastorp/issues/15) | Fuori scope iniziale |
 | 14 | Report finale | Riepilogo: Machine ID, GPU, IP, porte, stato servizi | Riepilogo equivalente a fine installazione: stato Grastorp, GPU rilevate, IP, porte, esito assessment | Da fare |
@@ -284,6 +284,61 @@ richiesta esplicita, non ancora implementata.)*
   ancora esaminata, fuori scope di questo repo) — un futuro backend potrà
   trasformarlo. Dettaglio in [`logbook-fase8.md`](logbook-fase8.md).
 
+## Fase 10 — CLI vastai
+
+- `postinstall/setup.sh` — nuova `phase10_vastai_cli()`, parte della
+  sequenza automatica (a differenza di Fase 7): installa la CLI
+  ufficiale `vastai` ([`vast-ai/vast-cli`](https://github.com/vast-ai/vast-cli),
+  MIT) via `curl -fsSL https://vast.ai/install.sh | bash`. Idempotente
+  (`command -v vastai` prima di reinstallare).
+- **Perché può essere automatica e Fase 7 no**: l'installer della CLI
+  non contiene alcun segreto d'account (a differenza del comando
+  daemon di `cloud.vast.ai/host/setup`, valido un'ora) — nessun vincolo
+  di tempistica con il primo boot.
+- L'autenticazione (`vastai set api-key <key>`) resta comunque a mano
+  dell'operatore, dopo il boot — nessuna API key mai hardcoded o
+  committata nel repo, stessa disciplina di Fase 7/chiave SSH.
+- **Limite noto, non verificabile in questa sessione**: il README
+  ufficiale del CLI dichiara solo che l'installer mette `vastai` sotto
+  `$HOME/.local/share/vastai`, senza specificare se aggiunge anche un
+  symlink su una directory di PATH di sistema (nessun accesso di rete a
+  `vast.ai`/`docs.vast.ai` disponibile durante questa sessione, dominio
+  bloccato dalla policy di rete). `phase10_vastai_cli()` gestisce
+  comunque il caso "non trovato su PATH dopo l'installer" cercando
+  l'eseguibile sotto la home e collegandolo in `/usr/local/bin` — non
+  testabile end-to-end senza un host reale con accesso a `vast.ai`.
+  Dettaglio in [`logbook-fase10.md`](logbook-fase10.md).
+
+## Fase 11 — vastai self-test
+
+- Nuovo script standalone `postinstall/vastai-self-test.sh`,
+  **deliberatamente escluso** dalla sequenza automatica (stesso motivo
+  di Fase 7): richiede un `machine_id` reale, che esiste solo dopo che
+  il daemon di Fase 7 ha listato con successo la macchina.
+- Esegue il comando ufficiale `vastai self-test machine <machine_id>`
+  (guida ufficiale "How to Self-Test"): verifica driver/CUDA, banda di
+  rete, porte aperte, banda PCIe, VRAM, RAM/CPU e affidabilità sotto
+  carico simulato — comando reale della CLI, non una reimplementazione.
+- Uso: `./vastai-self-test.sh --machine-id <ID> [-- --ignore-requirements ...]`.
+  Verifica prima che `vastai` sia installato (Fase 10) e autenticato
+  (`vastai show user`), con errori chiari se non lo è. Gli argomenti
+  dopo `--` passano invariati a `vastai self-test machine` (es.
+  `--ignore-requirements`, `--test-image`, `--raw`).
+- **Nota dalla guida ufficiale, riportata nei commenti dello script**:
+  anche in modalità `--ignore-requirements` servono almeno 3 porte
+  dirette aperte (Fase 6) — sotto quella soglia il test fallisce
+  comunque; se il test segnala "not found or not rentable", ritirare e
+  rilistare la macchina.
+- **Verificato in sandbox** (nessuna dipendenza di rete esterna, `vastai`
+  stubbato): parsing argomenti (`--machine-id` mancante o senza valore,
+  opzione sconosciuta, `--help`), CLI `vastai` assente, autenticazione
+  fallita, self-test fallito, passthrough dei flag extra dopo `--`.
+- **Non verificabile in sandbox** (per costruzione): il vero comando
+  richiede una macchina già listata su un account Vast.ai reale — da
+  testare quando Fase 7 avrà confermato un listing reale (stesso
+  blocco già annotato in `logbook-fase7.md`). Dettaglio in
+  [`logbook-fase11.md`](logbook-fase11.md).
+
 ## Riferimenti
 
 - [Grastorp](https://github.com/danielesalpietro/grastorp) — repo di
@@ -296,7 +351,11 @@ richiesta esplicita, non ancora implementata.)*
 - [grastorp#15](https://github.com/danielesalpietro/grastorp/issues/15) —
   integrazione RunPod/Vast.ai come target di deploy remoto (fasi 10 e 13 di
   questa tabella, fuori scope per l'installazione del nodo locale).
-- Fonti Vast.ai: `docs.vast.ai/host/hosting-overview`;
+- Fonti Vast.ai: `docs.vast.ai/host/hosting-overview`,
+  `docs.vast.ai/cli/hello-world`, `docs.vast.ai/host/how-to-self-test`;
   [`Soumya001/vastai-host-setup`](https://github.com/Soumya001/vastai-host-setup),
   [`AG-Sec4/VastAI-GPU-Host-Guide`](https://github.com/AG-Sec4/VastAI-GPU-Host-Guide)
-  (guide community che replicano il flusso ufficiale).
+  (guide community che replicano il flusso ufficiale);
+  [`vast-ai/vast-cli`](https://github.com/vast-ai/vast-cli) — sorgente
+  ufficiale MIT della CLI installata in Fase 10 e usata dal self-test di
+  Fase 11.

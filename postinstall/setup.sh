@@ -353,14 +353,71 @@ PYEOF
   log "Fase 8 completata."
 }
 
+# Fase 10 (issue #10) — CLI vastai ufficiale (vast-ai/vast-cli su GitHub,
+# MIT, pip install vastai / curl -fsSL https://vast.ai/install.sh | bash).
+# A differenza del daemon host di Fase 7 (comando account-specifico
+# valido un'ora, copiato da cloud.vast.ai/host/setup, mai automatizzabile
+# - vedi logbook-fase7.md), l'installer ufficiale della CLI non contiene
+# alcun segreto d'account: può quindi far parte della sequenza automatica
+# di setup.sh senza i vincoli di Fase 7. L'autenticazione
+# (`vastai set api-key <key>`) resta comunque a carico dell'operatore, a
+# mano, dopo il primo boot - stessa disciplina già applicata alla chiave
+# SSH e al comando d'installazione del daemon: nessun segreto mai
+# hardcoded o committato nel repo.
+#
+# La CLI serve da qui in poi anche a `vastai-self-test.sh` (Fase 11, non
+# automatica - richiede un machine_id reale, esistente solo dopo un
+# listing riuscito in Fase 7).
+phase10_vastai_cli() {
+  log "Fase 10: installazione CLI vastai ..."
+
+  if command -v vastai >/dev/null 2>&1; then
+    log "CLI vastai già installata ($(vastai --version 2>/dev/null || echo "versione non rilevabile"))."
+    log "Fase 10 completata."
+    return 0
+  fi
+
+  curl -fsSL https://vast.ai/install.sh | bash
+
+  if ! command -v vastai >/dev/null 2>&1; then
+    # Il README del repo ufficiale (vast-ai/vast-cli) dichiara solo che
+    # l'installer mette la CLI in un runtime isolato sotto
+    # $HOME/.local/share/vastai, senza specificare se aggiunge anche un
+    # symlink su una directory di PATH di sistema o solo una riga nella rc
+    # della shell interattiva - non verificabile da qui (nessun accesso di
+    # rete a vast.ai durante lo sviluppo di questa fase, vedi
+    # logbook-fase10.md). setup.sh gira non interattivo (systemd oneshot,
+    # nessuna rc caricata): se il comando non è già su PATH dopo
+    # l'installer, cerco l'eseguibile sotto la home dell'utente che ha
+    # lanciato il postinstall e lo collego in /usr/local/bin, così resta
+    # disponibile anche per shell successive senza dover ricaricare nulla.
+    local found
+    found="$(find "${HOME:-/root}/.local/share/vastai" -maxdepth 3 -type f -name 'vastai' -perm -u+x 2>/dev/null | head -n1)"
+    if [[ -n "$found" ]]; then
+      ln -sf "$found" /usr/local/bin/vastai
+      log "CLI vastai trovata in ${found}, collegata in /usr/local/bin/vastai."
+    fi
+  fi
+
+  command -v vastai >/dev/null 2>&1 \
+    || err "installazione CLI vastai fallita: comando 'vastai' non trovato dopo l'installer (https://vast.ai/install.sh)."
+
+  log "CLI vastai installata: $(vastai --version 2>/dev/null || echo "versione non rilevabile")."
+  log "Fase 10 completata. Configura l'API key a mano con: vastai set api-key <la-tua-api-key>" \
+    "(da https://cloud.vast.ai/account/, mai hardcoded/committata nel repo)."
+}
+
 main() {
   phase3_docker_storage
   phase4_nvidia_driver
   phase5_docker
   phase6_network
   phase8_hardware_info
-  # Fase 7 e 9, 12-14 (issue #15) verranno aggiunte qui come nuove
-  # funzioni, chiamate in ordine da main(), quando implementate.
+  phase10_vastai_cli
+  # Fase 7 (a mano, install-vastai-host.sh) e 9, 12-14 (issue #15)
+  # restano fuori da main(): fase 7 per il vincolo del comando
+  # account-specifico (vedi logbook-fase7.md), 9/12-14 perché non
+  # ancora implementate.
 }
 
 main "$@"

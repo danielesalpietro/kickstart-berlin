@@ -343,10 +343,12 @@ sed \
     "${REPO_ROOT}/postinstall/setup.sh" \
   > "${POSTINSTALL_STAGE}/setup.sh"
 cp "${REPO_ROOT}/postinstall/kickstart-berlin-postinstall.service" "${POSTINSTALL_STAGE}/"
-# install-vastai-host.sh (Fase 7, issue #7): nessun placeholder, copiato
-# così com'è - va invocato a mano dall'operatore, mai dalla sequenza
-# automatica di setup.sh (vedi commenti nel file stesso).
+# install-vastai-host.sh (Fase 7, issue #7) e vastai-self-test.sh
+# (Fase 11, issue #11): nessun placeholder, copiati così come sono -
+# entrambi vanno invocati a mano dall'operatore, mai dalla sequenza
+# automatica di setup.sh (vedi commenti in ciascun file).
 cp "${REPO_ROOT}/postinstall/install-vastai-host.sh" "${POSTINSTALL_STAGE}/"
+cp "${REPO_ROOT}/postinstall/vastai-self-test.sh" "${POSTINSTALL_STAGE}/"
 
 VOLID="$(xorriso -indev "$SOURCE_ISO" -pvd_info 2>/dev/null \
   | awk -F': ' '/Volume Id/{print $2; exit}')"
