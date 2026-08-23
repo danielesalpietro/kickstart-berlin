@@ -161,7 +161,18 @@ phase4_nvidia_driver() {
     # tutti i pacchetti nvidia-* installati, non solo il driver
     # principale: un upgrade parziale di un pacchetto correlato
     # (nvidia-dkms-*, libnvidia-*, ...) puo' causare lo stesso mismatch.
-    mapfile -t nvidia_pkgs < <(dpkg-query -W -f='${Package}\n' 'nvidia-*' 2>/dev/null)
+    #
+    # Filtro su "${db:Status-Abbrev}" = ii/hi (installato, non solo
+    # "noto a dpkg"): "dpkg-query -W 'nvidia-*'" senza filtro include
+    # anche voci non installate che dpkg conosce solo come riferimento
+    # (Status "ok not-installed" — nessun candidato apt associato, es.
+    # "nvidia-smi", "nvidia-persistenced" su driver in variante "-open").
+    # "apt-mark hold" fallisce su quelle ("Can't select installed nor
+    # candidate version") e con "set -euo pipefail" (riga 15) manda in
+    # errore l'intero script PRIMA del reboot sotto — scoperto sul primo
+    # collaudo reale su hardware con moduli Optane PMem (RTX 3090, driver
+    # 595-open), vedi logbook_first_boot.md.
+    mapfile -t nvidia_pkgs < <(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 'nvidia-*' 2>/dev/null | awk '$1=="ii"||$1=="hi"{print $2}')
     if [[ ${#nvidia_pkgs[@]} -gt 0 ]]; then
       apt-mark hold "${nvidia_pkgs[@]}"
     fi
@@ -371,13 +382,41 @@ PYEOF
 phase10_vastai_cli() {
   log "Fase 10: installazione CLI vastai ..."
 
+  # setup.sh gira come root via systemd (HOME non definita nell'ambiente
+  # del servizio, vedi sotto): l'installer ufficiale vast.ai installa
+  # sotto "${HOME:-/root}/.local/...", con permessi 755 su tutta la
+  # catena TRANNE la home stessa ("/root", 700 di default) — l'unico
+  # blocco reale. Risultato: l'unico account con accesso al nodo
+  # ("admin", via sudo NOPASSWD, vedi iso/user-data) si trova "vastai:
+  # Permission denied" nonostante il comando sia in PATH (symlink in
+  # /usr/local/bin), perché non può attraversare "/root" per risolverlo.
+  # "o+x" (senza "o+r") basta a permettere l'attraversamento su percorsi
+  # già noti, senza rendere "/root" elencabile (namei/`ls /root` restano
+  # bloccati) e senza intaccare i permessi propri di sottodirectory
+  # sensibili (es. "/root/.ssh", resta 700) — idempotente, va bene anche
+  # su un'installazione preesistente con "vastai" già presente, quindi è
+  # fuori dal blocco "return 0" sotto. Scoperto sul primo collaudo reale
+  # in assoluto della Fase 10 (hardware fisico, Z8) — mai verificata
+  # prima d'ora su nessun host, vedi logbook_first_boot.md.
+  chmod o+x "${HOME:-/root}"
+
   if command -v vastai >/dev/null 2>&1; then
     log "CLI vastai già installata ($(vastai --version 2>/dev/null || echo "versione non rilevabile"))."
     log "Fase 10 completata."
     return 0
   fi
 
-  curl -fsSL https://vast.ai/install.sh | bash
+  # "HOME" a destra della pipe, non a sinistra: setup.sh gira come root
+  # via systemd (Type=oneshot, nessun Environment=/PAM), quindi $HOME
+  # non è definita nell'ambiente del servizio. L'installer ufficiale
+  # (il processo "bash" che riceve lo script via stdin, lato destro
+  # della pipe) referenzia $HOME e va in errore ("HOME: unbound
+  # variable") se non è impostata lì — impostarla sul lato "curl"
+  # (sinistro) non ha alcun effetto sull'ambiente di "bash" (sinistra e
+  # destra di una pipe sono processi/ambienti separati). Scoperto sul
+  # primo collaudo reale su hardware fisico (Z8), vedi
+  # logbook_first_boot.md.
+  curl -fsSL https://vast.ai/install.sh | HOME="${HOME:-/root}" bash
 
   if ! command -v vastai >/dev/null 2>&1; then
     # Letto per intero l'installer ufficiale (vast.ai/install.sh, vedi
@@ -394,6 +433,12 @@ phase10_vastai_cli() {
     # shell successive senza dover ricaricare una rc.
     local vastai_local_bin="${HOME:-/root}/.local/bin/vastai"
     if [[ -e "$vastai_local_bin" ]]; then
+      # NON copiare il binario: è un wrapper venv-style (vedi installer
+      # "uv") che risolve il proprio path reale a runtime e si aspetta
+      # un interprete Python affiancato nella stessa directory — una
+      # copia altrove lo rompe ("python: not found"). Un symlink va bene
+      # perché il "chmod o+x" sopra rende l'intera catena attraversabile
+      # dall'utente admin.
       ln -sf "$vastai_local_bin" /usr/local/bin/vastai
       log "CLI vastai trovata in ${vastai_local_bin}, collegata in /usr/local/bin/vastai."
     fi
