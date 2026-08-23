@@ -114,6 +114,9 @@ equivalente per un nodo Grastorp.
 - [`docs/collaudo-funzionale.md`](docs/collaudo-funzionale.md) — elenco dei
   test case, automatici (CI) e manuali (richiedono hardware GPU reale e/o
   un account Vast.ai reale), con stato aggiornato per fase.
+- [`docs/setup.md`](docs/setup.md) — guida operativa passo-passo dal
+  BIOS/UEFI al check finale, requisiti per i diversi setup, tabella delle
+  informazioni richieste durante l'installazione.
 
 ## Fase 2 — partizionamento disco (sistema + Datastore Grastorp)
 
