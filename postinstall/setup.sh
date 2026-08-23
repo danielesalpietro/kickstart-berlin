@@ -200,11 +200,224 @@ phase4_nvidia_driver() {
   log "Fase 4 completata."
 }
 
+# Fase 5 (issue #5) — Docker + config runtime NVIDIA. La guida ufficiale
+# Vast.ai non descrive comandi espliciti per questo passaggio (nascosto
+# nel proprio installer proprietario, come già notato per il Container
+# Toolkit in Fase 4): si segue quindi la pratica standard Docker
+# (script di convenienza get.docker.com, come da README) invece di una
+# fonte vast.ai-specific da cui questo passaggio non è ricavabile.
+#
+# "nvidia-ctk runtime configure" (rimandato da phase4_nvidia_driver: lì
+# Docker non esiste ancora) fa un merge nel daemon.json esistente, non lo
+# sovrascrive - dovrebbe convivere con la chiave "data-root" scritta da
+# phase3_docker_storage, ma il merge esatto non è verificabile qui
+# (nvidia-ctk non installabile in questo sandbox, vedi phase4_nvidia_driver
+# e logbook-fase4.md) - da confermare appena disponibile un host dove il
+# Container Toolkit installa davvero.
+phase5_docker() {
+  log "Fase 5: installazione Docker ..."
+
+  if command -v docker >/dev/null 2>&1; then
+    log "Docker già installato."
+  else
+    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+    sh /tmp/get-docker.sh
+    rm -f /tmp/get-docker.sh
+    systemctl enable --now docker
+  fi
+
+  if command -v nvidia-ctk >/dev/null 2>&1; then
+    log "Configuro il runtime NVIDIA per Docker ..."
+    nvidia-ctk runtime configure --runtime=docker
+    systemctl restart docker
+  else
+    log "NVIDIA Container Toolkit non presente (host non-GPU o Fase 4 non eseguita): salto la config del runtime."
+  fi
+
+  log "Fase 5 completata."
+}
+
+PORT_RANGE_START="__PORT_RANGE_START__"
+PORT_RANGE_END="__PORT_RANGE_END__"
+
+# Fase 6 (issue #6) — Rete: apertura del range di porte richiesto dalla
+# guida ufficiale Vast.ai (sezione "Network Setup"/"Port Requirements":
+# range continuo TCP+UDP, almeno 3 porte per GPU). Qui si copre solo la
+# parte che ha senso a livello di HOST, indipendente da quale agente la
+# userà: DHCP è già il default Ubuntu Server (nulla da fare), l'hostname
+# univoco è già gestito a install-time (vedi iso/user-data late-commands).
+#
+# Cosa NON è qui, deliberatamente:
+# - Il file di config vast.ai-specifico (/var/lib/vastai_kaalia/
+#   host_port_range) non ha un equivalente: quel path appartiene al loro
+#   daemon, che qui non installiamo (Fase 7 è sostituita dal backend/agent
+#   Grastorp, non ancora implementato) - quando esiste, sarà lui a leggere
+#   questo stesso range da config/autoinstall-defaults.json.
+# - L'override IP (host_ipaddr nella guida) non ha un caso d'uso Grastorp
+#   noto ad oggi - la guida stessa lo descrive come eccezione rara (NAT
+#   asimmetrici) - non implementato senza un requisito concreto.
+# - Il test di velocità di rete appartiene a Fase 11 (assessment one-shot,
+#   vedi README), non qui.
+phase6_network() {
+  log "Fase 6: apertura porte ${PORT_RANGE_START}-${PORT_RANGE_END} (TCP+UDP) ..."
+
+  if ! command -v ufw >/dev/null 2>&1; then
+    log "ufw non installato: nessun firewall da configurare, nulla da fare."
+    return 0
+  fi
+
+  if ! ufw status | grep -q "^Status: active"; then
+    log "ufw installato ma non attivo: non lo abilito (non tocco la postura" \
+      "firewall esistente dell'host) - range ${PORT_RANGE_START}-${PORT_RANGE_END}" \
+      "da aprire manualmente se/quando ufw verrà attivato."
+    return 0
+  fi
+
+  # Idempotente: ufw stesso non duplica una regola già presente, ma il
+  # controllo esplicito evita comunque rumore nei log ad ogni riavvio del
+  # servizio (la condition systemd previene la riesecuzione, ma lo script
+  # resta invocabile a mano per la DoD di idempotenza).
+  if ufw status | grep -q "${PORT_RANGE_START}:${PORT_RANGE_END}/tcp"; then
+    log "Regole ufw per ${PORT_RANGE_START}-${PORT_RANGE_END} già presenti."
+  else
+    ufw allow "${PORT_RANGE_START}:${PORT_RANGE_END}/tcp"
+    ufw allow "${PORT_RANGE_START}:${PORT_RANGE_END}/udp"
+    log "Regole ufw aggiunte per ${PORT_RANGE_START}-${PORT_RANGE_END} (TCP+UDP)."
+  fi
+
+  log "Fase 6 completata."
+}
+
+HARDWARE_INFO_FILE="/opt/kickstart-berlin/hardware-info.json"
+
+# Fase 8 (issue #8) — Raccolta informazioni hardware, "riusata as-is"
+# dalla guida Vast.ai (dmidecode + permessi sudo dedicati, usato per
+# popolare il "machine info" del proprio marketplace) — qui alimenta
+# invece il node profiling di Grastorp (grastorp#14). Il "permesso sudo
+# dedicato" di Vast.ai per dmidecode non serve qui: l'account admin ha
+# già sudo NOPASSWD completo (Fase 1, iso/user-data late-commands) — un
+# permesso più stretto sarebbe una restrizione IN PIÙ rispetto a quanto
+# già garantito, non richiesta da alcun requisito di sicurezza noto per
+# questo progetto.
+#
+# Fase 7 (installazione daemon/backend Grastorp) è saltata per ora
+# (non ancora implementata) — questa fase non dipende dal suo codice,
+# solo raccoglie dati grezzi che un futuro backend potrà consumare.
+#
+# Output: snapshot JSON grezzo (dmidecode/lscpu/lspci/lsblk/rete/GPU),
+# non lo schema "machine info" specifico di Grastorp — non noto qui,
+# grastorp#14 lo definirà quando il backend esisterà. Idempotente per
+# costruzione: sola lettura, ogni esecuzione riscrive lo snapshot più
+# recente, nessuno stato da preservare tra esecuzioni.
+phase8_hardware_info() {
+  log "Fase 8: raccolta informazioni hardware ..."
+
+  if ! command -v dmidecode >/dev/null 2>&1; then
+    apt-get update -qq
+    apt-get install -y dmidecode
+  fi
+
+  mkdir -p "$(dirname "$HARDWARE_INFO_FILE")"
+
+  python3 - "$HARDWARE_INFO_FILE" <<'PYEOF'
+import json
+import subprocess
+import sys
+
+
+def run(cmd):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=30).stdout.strip()
+    except Exception as exc:
+        return f"<errore: {exc}>"
+
+
+info = {
+    "dmidecode_system": run(["dmidecode", "-t", "system"]),
+    "dmidecode_baseboard": run(["dmidecode", "-t", "baseboard"]),
+    "dmidecode_memory": run(["dmidecode", "-t", "memory"]),
+    "dmidecode_processor": run(["dmidecode", "-t", "processor"]),
+    "cpu": run(["lscpu"]),
+    "pci": run(["lspci"]),
+    "block_devices": run(["lsblk", "-o", "NAME,SIZE,TYPE,MODEL"]),
+    "network": run(["ip", "-brief", "addr"]),
+    "nvidia_gpu": run(["nvidia-smi", "--query-gpu=name,memory.total,driver_version", "--format=csv,noheader"]),
+}
+
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    json.dump(info, f, indent=2)
+    f.write("\n")
+PYEOF
+
+  log "Informazioni hardware salvate in ${HARDWARE_INFO_FILE}."
+  log "Fase 8 completata."
+}
+
+# Fase 10 (issue #10) — CLI vastai ufficiale (vast-ai/vast-cli su GitHub,
+# MIT, pip install vastai / curl -fsSL https://vast.ai/install.sh | bash).
+# A differenza del daemon host di Fase 7 (comando account-specifico
+# valido un'ora, copiato da cloud.vast.ai/host/setup, mai automatizzabile
+# - vedi logbook-fase7.md), l'installer ufficiale della CLI non contiene
+# alcun segreto d'account: può quindi far parte della sequenza automatica
+# di setup.sh senza i vincoli di Fase 7. L'autenticazione
+# (`vastai set api-key <key>`) resta comunque a carico dell'operatore, a
+# mano, dopo il primo boot - stessa disciplina già applicata alla chiave
+# SSH e al comando d'installazione del daemon: nessun segreto mai
+# hardcoded o committato nel repo.
+#
+# La CLI serve da qui in poi anche a `vastai-self-test.sh` (Fase 11, non
+# automatica - richiede un machine_id reale, esistente solo dopo un
+# listing riuscito in Fase 7).
+phase10_vastai_cli() {
+  log "Fase 10: installazione CLI vastai ..."
+
+  if command -v vastai >/dev/null 2>&1; then
+    log "CLI vastai già installata ($(vastai --version 2>/dev/null || echo "versione non rilevabile"))."
+    log "Fase 10 completata."
+    return 0
+  fi
+
+  curl -fsSL https://vast.ai/install.sh | bash
+
+  if ! command -v vastai >/dev/null 2>&1; then
+    # Letto per intero l'installer ufficiale (vast.ai/install.sh, vedi
+    # logbook-fase10.md): crea il binario stabile come symlink in
+    # $HOME/.local/bin/vastai (mai sotto .local/share/vastai, che è solo
+    # il runtime interno) e aggiunge $HOME/.local/bin al PATH SOLO
+    # modificando la rc della shell interattiva (~/.bashrc/~/.zshrc) -
+    # esplicitamente "never written non-interactively/CI" nei commenti
+    # dell'installer stesso. setup.sh gira non interattivo (systemd
+    # oneshot, nessun /dev/tty): la rc non viene toccata, quindi il
+    # comando non risulta su PATH in questa sessione pur essendo stato
+    # installato - colleghiamo esplicitamente il binario stabile
+    # dell'installer in /usr/local/bin, così resta disponibile anche per
+    # shell successive senza dover ricaricare una rc.
+    local vastai_local_bin="${HOME:-/root}/.local/bin/vastai"
+    if [[ -e "$vastai_local_bin" ]]; then
+      ln -sf "$vastai_local_bin" /usr/local/bin/vastai
+      log "CLI vastai trovata in ${vastai_local_bin}, collegata in /usr/local/bin/vastai."
+    fi
+  fi
+
+  command -v vastai >/dev/null 2>&1 \
+    || err "installazione CLI vastai fallita: comando 'vastai' non trovato dopo l'installer (https://vast.ai/install.sh)."
+
+  log "CLI vastai installata: $(vastai --version 2>/dev/null || echo "versione non rilevabile")."
+  log "Fase 10 completata. Configura l'API key a mano con: vastai set api-key <la-tua-api-key>" \
+    "(da https://cloud.vast.ai/manage-keys/?tab=api-keys, mai hardcoded/committata nel repo)."
+}
+
 main() {
   phase3_docker_storage
   phase4_nvidia_driver
-  # Fasi successive (5-9, 12-14, issue #15) verranno aggiunte qui come
-  # nuove funzioni, chiamate in ordine da main().
+  phase5_docker
+  phase6_network
+  phase8_hardware_info
+  phase10_vastai_cli
+  # Fase 7 (a mano, install-vastai-host.sh) e 9, 12-14 (issue #15)
+  # restano fuori da main(): fase 7 per il vincolo del comando
+  # account-specifico (vedi logbook-fase7.md), 9/12-14 perché non
+  # ancora implementate.
 }
 
 main "$@"

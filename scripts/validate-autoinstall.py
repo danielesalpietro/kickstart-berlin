@@ -59,6 +59,8 @@ def load_dummy_substitutions() -> dict[str, str]:
         "__DATASTORE_MOUNT_ROOT__": datastore["mount_root"],
         "__DATASTORE_SYMLINK_NAME__": datastore["symlink_name"],
         "__HOSTNAME_PREFIX__": d["identity"]["hostname_prefix"],
+        "__PORT_RANGE_START__": str(d["network"]["port_range_start"]),
+        "__PORT_RANGE_END__": str(d["network"]["port_range_end"]),
         # Valore di produzione (no-op): vedi scripts/build-iso.sh
         # --dev-skip-security-updates per il valore usato nei build di
         # sviluppo/test.
