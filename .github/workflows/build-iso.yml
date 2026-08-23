@@ -1,0 +1,108 @@
+name: Build ISO (on-demand)
+
+# Build manuale, a richiesta, dell'ISO autoinstall di produzione — a
+# differenza del job di integrazione in ci.yml (che builda un'ISO throwaway
+# da 10G solo per il boot test QEMU e non la conserva), questo workflow
+# genera l'ISO reale con i parametri scelti e la carica come artifact
+# scaricabile da GitHub Actions.
+#
+# La chiave SSH pubblica va incollata nell'input dedicato ad ogni run: non
+# viene mai salvata nel repo. Il comando di installazione host Vast.ai
+# (Fase 7) NON è mai parte dell'ISO — resta un passo manuale successivo al
+# boot (vedi postinstall/install-vastai-host.sh e README).
+
+on:
+  workflow_dispatch:
+    inputs:
+      ssh_public_key:
+        description: >-
+          Chiave SSH pubblica da iniettare nell'utente admin (contenuto di
+          es. ~/.ssh/id_ed25519.pub). Obbligatoria.
+        type: string
+        required: true
+      disks:
+        description: Topologia dischi target
+        type: choice
+        options:
+          - "1"
+          - "2"
+        default: "1"
+      ubuntu_version:
+        description: >-
+          Versione Ubuntu Server LTS (vuoto = default da
+          config/autoinstall-defaults.json).
+        type: string
+        required: false
+        default: ""
+      system_size:
+        description: >-
+          Size partizione di sistema, sintassi curtin (es. 100G). Rilevante
+          solo con disks=1. Vuoto = default da config/autoinstall-defaults.json.
+        type: string
+        required: false
+        default: ""
+      hostname_prefix:
+        description: >-
+          Prefisso hostname (vuoto = default da config/autoinstall-defaults.json).
+        type: string
+        required: false
+        default: ""
+      port_range:
+        description: >-
+          Range porte ufw "START-END" (vuoto = default da
+          config/autoinstall-defaults.json).
+        type: string
+        required: false
+        default: ""
+      retention_days:
+        description: Giorni di conservazione dell'artifact su GitHub Actions.
+        type: string
+        required: false
+        default: "7"
+
+jobs:
+  build-iso:
+    name: Build ISO autoinstall (produzione)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installa dipendenze (xorriso, gnupg)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xorriso gnupg
+
+      - name: Scrivi la chiave pubblica SSH su file
+        run: |
+          printf '%s\n' "${{ inputs.ssh_public_key }}" > "${RUNNER_TEMP}/build_key.pub"
+
+      - name: Costruisci ISO
+        id: build
+        run: |
+          args=(-k "${RUNNER_TEMP}/build_key.pub" --disks "${{ inputs.disks }}")
+
+          [[ -n "${{ inputs.ubuntu_version }}" ]] && args+=(--version "${{ inputs.ubuntu_version }}")
+          [[ -n "${{ inputs.system_size }}" ]] && args+=(--system-size "${{ inputs.system_size }}")
+          [[ -n "${{ inputs.hostname_prefix }}" ]] && args+=(--hostname-prefix "${{ inputs.hostname_prefix }}")
+          [[ -n "${{ inputs.port_range }}" ]] && args+=(--port-range "${{ inputs.port_range }}")
+
+          out="${RUNNER_TEMP}/kickstart-berlin.iso"
+          args+=(-o "$out")
+
+          scripts/build-iso.sh "${args[@]}"
+
+          echo "iso_path=${out}" >> "$GITHUB_OUTPUT"
+          echo "iso_name=$(basename "$out")" >> "$GITHUB_OUTPUT"
+
+      - name: Rimuovi la chiave pubblica temporanea
+        if: always()
+        run: rm -f "${RUNNER_TEMP}/build_key.pub"
+
+      - name: Carica ISO come artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.build.outputs.iso_name }}
+          path: ${{ steps.build.outputs.iso_path }}
+          retention-days: ${{ inputs.retention_days }}
+          compression-level: 0
