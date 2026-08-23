@@ -137,6 +137,31 @@ nell'ISO):
   corretta dalla copia clonata (sono tutte idempotenti per design — vedi
   `CLAUDE.md`, direttiva 5) prima di proseguire.
 
+### (Opzionale, SOLO fase di sviluppo) — Claude Code CLI sul nodo
+
+Non fa parte del piano fasi 1-14 né di `setup.sh`/`build-iso.sh`: è
+un'utility ad-hoc per avere un agente Claude Code direttamente sul nodo
+durante questa fase di sviluppo/collaudo (es. per debug live sugli step
+manuali seguenti). **Va rimossa prima che il nodo passi in produzione o
+venga listato in via definitiva** — non è mai stata pensata per restare,
+quindi non è baked-in nell'ISO né in `setup.sh` (niente da "trovare e
+togliere" più avanti, basta disinstallarla).
+
+Installer nativo, self-contained (nessun Node.js richiesto):
+
+```sh
+curl -fsSL https://claude.ai/install.sh | bash
+export ANTHROPIC_API_KEY="<la-tua-api-key>"   # o login OAuth interattivo, senza la var
+claude --version
+```
+
+Per rimuoverla a fine collaudo:
+
+```sh
+rm -f ~/.local/bin/claude
+rm -rf ~/.local/share/claude ~/.claude ~/.claude.json
+```
+
 ### Step 5 — Fase 7: daemon host Vast.ai reale (manuale)
 
 1. Da browser, loggato come host su `cloud.vast.ai/host/setup`, genera
