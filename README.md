@@ -106,6 +106,15 @@ equivalente per un nodo Grastorp.
   scripts/build-iso.sh -k ~/.ssh/id_ed25519.pub
   ```
 
+- **Build su richiesta via GitHub Actions**: workflow `Build ISO (on-demand)`
+  (`.github/workflows/build-iso.yml`), avviabile manualmente da tab Actions →
+  seleziona workflow → "Run workflow". Richiede di incollare la chiave SSH
+  pubblica nell'apposito campo (mai salvata nel repo) e opzionalmente
+  versione Ubuntu, topologia dischi, size partizione, hostname prefix,
+  range porte; l'ISO risultante è scaricabile come artifact della run al
+  termine del build (conservato per `retention_days`, default 7 giorni).
+  Il comando di installazione host Vast.ai (Fase 7) non è mai incluso
+  nell'ISO: resta un passo manuale post-boot, vedi Fase 7 più sotto.
 - `scripts/boot-test-qemu.sh` — boota l'ISO generata in QEMU headless su un
   disco virtuale throwaway e verifica che l'installazione completi senza
   prompt e che l'host risultante sia raggiungibile via SSH con la chiave
