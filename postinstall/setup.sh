@@ -407,6 +407,40 @@ phase10_vastai_cli() {
     "(da https://cloud.vast.ai/manage-keys/?tab=api-keys, mai hardcoded/committata nel repo)."
 }
 
+# Issue #27 — schermata informativa su tty1 (stile DCUI VMware ESXi),
+# non una delle 14 fasi mappate da Vast.ai/README (Vast.ai non ha un
+# equivalente): aggiunta originale, coerente col criterio di
+# CLAUDE.md direttiva #2 (automatico in main() perché non dipende da
+# alcun segreto né da uno stato che esiste solo dopo un passo manuale —
+# legge solo stato locale già disponibile a questo punto della sequenza).
+#
+# console-status.sh (già copiato in /opt/kickstart-berlin dalle
+# late-commands di iso/user-data insieme al resto di postinstall/, vedi
+# CLAUDE.md direttiva #6) va installato come systemd unit e abilitato:
+# non basta che esista nella directory.
+console_status_setup() {
+  log "Issue #27: schermata informativa su tty1 ..."
+
+  local unit_src="/opt/kickstart-berlin/kickstart-berlin-console-status.service"
+  local unit_dst="/etc/systemd/system/kickstart-berlin-console-status.service"
+
+  if [[ ! -f "$unit_src" ]]; then
+    log "kickstart-berlin-console-status.service non trovato in /opt/kickstart-berlin: salto (ISO più vecchia?)."
+    return 0
+  fi
+
+  # Idempotente: confronta il contenuto prima di riscrivere/ricaricare,
+  # stesso pattern già in uso per daemon.json in phase3_docker_storage().
+  if ! cmp -s "$unit_src" "$unit_dst" 2>/dev/null; then
+    cp "$unit_src" "$unit_dst"
+    systemctl daemon-reload
+  fi
+
+  systemctl enable --now kickstart-berlin-console-status.service >/dev/null
+
+  log "Issue #27 completata: tty1 mostra la schermata informativa (Alt+F2 ... Alt+F6 per la shell classica)."
+}
+
 main() {
   phase3_docker_storage
   phase4_nvidia_driver
@@ -414,6 +448,7 @@ main() {
   phase6_network
   phase8_hardware_info
   phase10_vastai_cli
+  console_status_setup
   # Fase 7 (a mano, install-vastai-host.sh) e 9, 12-14 (issue #15)
   # restano fuori da main(): fase 7 per il vincolo del comando
   # account-specifico (vedi logbook-fase7.md), 9/12-14 perché non
