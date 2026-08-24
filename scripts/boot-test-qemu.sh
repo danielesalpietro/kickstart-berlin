@@ -429,4 +429,18 @@ fi
 
 log "Post-install verificato: /var/lib/docker -> ${DOCKER_DATA_ROOT}, daemon.json coerente."
 
+# Fase 5 (issue #5, fix #34): regression test per "admin non nel gruppo
+# docker" — scoperto sul collaudo reale (Z8, 2026-08-24): senza questo
+# fix ogni comando "docker" da admin fallisce con "permission denied"
+# (serve sudo per tutto). "id -nG" invece di "groups": non dipende dal
+# nome del comando "groups" (a volte assente su immagini minimali) ed è
+# lo stesso approccio già usato altrove nel repo per leggere i gruppi.
+log "Verifico che admin sia nel gruppo docker (Fase 5, fix #34) ..."
+if ! "${SSH_CMD[@]}" 'id -nG admin | tr " " "\n" | grep -qx docker'; then
+  "${SSH_CMD[@]}" 'id admin' || true
+  err "admin non è nel gruppo docker (regressione del fix #34 — vedi phase5_docker() in postinstall/setup.sh)"
+fi
+
+log "Gruppo docker verificato: admin può usare docker senza sudo."
+
 log "Test superato."
