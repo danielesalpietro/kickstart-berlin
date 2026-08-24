@@ -320,6 +320,37 @@ nodo passi in produzione definitiva.
   lato Vast.ai (non risolvibile da questo repo) — vedi
   `logbook-fase11.md` per il dettaglio completo dell'indagine.
 
+## 2026-08-24 (continua) — `ndctl`/`ipmctl` e `python3-pip` installati (issue #35, #37)
+
+Ripresa la sessione dopo le 48h di manutenzione: stesse credenziali
+SSH dell'utente, ma IP/porta diversi da prima (`151.64.182.141:2222`
+invece di `:22` — DHCP dopo la manutenzione, o comunque non prevedibile
+a priori). Da qui in poi confermato che l'accesso live al nodo funziona
+di nuovo normalmente.
+
+Su richiesta esplicita dell'utente, installati via `apt-get` (pacchetti
+Ubuntu 24.04 standard, nessun repository esterno):
+
+- **`ndctl` `77-2ubuntu2`** (repo `main`) e **`ipmctl`
+  `03.00.00.0485-1build1`** (repo `universe`) — issue #35, prerequisito
+  per ispezionare/riconfigurare le region PMem (`ndctl list -Ru`
+  conferma quanto già visto in `lsblk`: `region0` e `region1` da 252GiB
+  ciascuna, entrambe `available_size: 0` — `region1` ha già un
+  namespace raw non partizionato sopra, coerente con `pmem1s` senza
+  sotto-partizioni). Solo tooling di ispezione installato: **nessuna
+  riconfigurazione fsdax/devdax eseguita** — quella decisione resta
+  aperta in issue #35 (fsdax vs devdax, caso d'uso EMH-2 esatto).
+- **`python3-pip`** (`pip 24.0` su Python 3.12.3) — issue #37.
+
+Entrambe le installazioni verificate a basso rischio prima di
+procedere (pacchetti standard, nessuna modifica a dati/config
+esistenti) — nessun servizio interrotto (`docker`, `containerd`,
+`vastai.service`, `vast_metrics.service` tutti ancora attivi dopo
+entrambe). L'installazione di `ndctl`/`ipmctl` ha triggerato un
+riavvio automatico di `vast_metrics.service` da parte di `needrestart`
+(dipendenza di libreria toccata) — verificato attivo subito dopo,
+nessun impatto.
+
 ## Prossimi passi
 
 - [x] Riconciliare il branch — vedi sezione sopra.
@@ -330,13 +361,28 @@ nodo passi in produzione definitiva.
       rispetto ai moduli PMem — Problema 1, **corretto** (allowlist per
       path) e rafforzato con `--disk-serial` opzionale per il caso
       multi-disco scoperto sopra.
+- [x] `ndctl`/`ipmctl` installati (issue #35) — riconfigurazione
+      fsdax/devdax di `region1` resta una decisione aperta, non ancora
+      presa.
+- [x] `python3-pip` installato (issue #37).
 - [ ] Valutare se riportare anche `docs/setup.md`/`docs/setup.docx` in
       `develop` (mai fusi dopo la PR #23).
-- [ ] Mergiare PR #29 e #30 quando approvate.
+- [ ] Mergiare le PR aperte quando approvate/riviste dall'utente
+      (vedi issue/PR tracker per lo stato aggiornato — cresciuto molto
+      in questa sessione, non elencato singolarmente qui per evitare
+      che questa lista invecchi rispetto a GitHub).
 - [ ] Prossimo reinstall da zero: dischi Windows scollegati fisicamente
       prima, PMem lasciato collegato — verificare che il fix Problema 1
-      funzioni davvero su un boot reale (non ancora testato).
+      funzioni davvero su un boot reale (non ancora testato). **Nota
+      2026-08-24**: il piano è cambiato in corso di sessione — l'utente
+      vuole riusare MZ1L2960HCJR (NVMe, oggi ancora NTFS/Windows) come
+      disco Datastore/container invece di scollegarlo soltanto, quindi
+      il reinstall futuro dovrà wipare quel disco specifico, non solo
+      escluderlo — vedi conversazione, non ancora in un logbook
+      dedicato al reinstall.
 - [ ] Rimuovere gli strumenti dev-only (gh, claude, actions runner)
       prima che il nodo passi in produzione definitiva.
 - [ ] Capire con supporto Vast.ai come sbloccare il self-test (Fase 11,
       vedi `logbook-fase11.md`).
+- [ ] issue #36 (CUDA toolkit nativo): ancora da decidere se serve un
+      caso d'uso non containerizzato prima di installarlo.
