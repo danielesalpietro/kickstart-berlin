@@ -177,13 +177,22 @@ indipendenti (#34-#37), non nello scope di issue #33:
 
 ## Stato
 
-- **Verificato in sandbox**: nessuno — il nodo Z8 non era raggiungibile
-  in questa sessione (nessun alias SSH salvato localmente, l'IP/porta
-  usati nella sessione precedente potrebbero essere cambiati dopo le
-  48h di manutenzione impostate su Vast.ai). Il codice è stato scritto
-  e rivisto manualmente (nessun interprete Python disponibile
-  localmente su Windows per un `py_compile` automatico), non eseguito.
-- **Non verificabile per costruzione fino al prossimo accesso al nodo**:
+- **Verificato in sandbox/nodo reale (2026-08-24, sessione parallela via
+  `handoff_node-manage.md`)**: nodo `berlin-3eie` (Z8, ID Vast.ai
+  148447) raggiungibile con le stesse credenziali SSH del handoff (IP e
+  porta non erano cambiati). Controllo sintattico
+  (`python3 -c "import ast; ast.parse(...)"`) eseguito sul file via SSH
+  non interattiva: **OK**, nessun errore di sintassi. File copiato con
+  `sudo cp` in `/opt/kickstart-berlin/node-manage.py` (root:root,
+  eseguibile) — presente e pronto per il collaudo interattivo.
+- **Deliberatamente non eseguito in questa sessione**: nessuna azione
+  automatizzata oltre al controllo sintattico e al deploy — scelta
+  esplicita dell'utente quando gli è stato chiesto conferma prima di
+  lanciare comandi `sudo` aggiuntivi sul nodo reale (status di
+  rete/POD, riavvii). Il collaudo delle singole azioni e della
+  navigazione curses resta da fare dall'utente stesso da un terminale
+  SSH interattivo vero.
+- **Non verificabile per costruzione finché non lo esegue l'utente**:
   l'intero flusso `netplan try` (comportamento reale su una NIC fisica,
   non solo sintassi), il wrapper `vastai list/unlist machine` contro
   l'account reale, la lettura dei log reali
@@ -192,8 +201,12 @@ indipendenti (#34-#37), non nello scope di issue #33:
 
 ## Prossimi passi
 
-- [ ] Collaudo reale end-to-end sul nodo Z8 (richiede le credenziali
-  SSH aggiornate dall'utente — non fornite in questa sessione).
+- [ ] Collaudo interattivo end-to-end sul nodo Z8 da parte dell'utente
+  (menu curses, azioni una per una, seguendo l'ordine di rischio
+  crescente già indicato in `handoff_node-manage.md`) — il file è già
+  deployato in `/opt/kickstart-berlin/node-manage.py`, lanciabile con
+  `sudo /opt/kickstart-berlin/node-manage.py` da una sessione SSH
+  interattiva (`ssh -t ...`).
 - [ ] Verificare che `netplan try` si comporti come atteso su questa
   NIC/rete specifica (non testato su hardware reale).
 - [ ] Decidere se aggiungere un'azione "Reset to DHCP" più diretta
