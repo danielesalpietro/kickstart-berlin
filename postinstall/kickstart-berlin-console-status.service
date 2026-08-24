@@ -1,0 +1,24 @@
+[Unit]
+Description=kickstart-berlin - schermata informativa su tty1 (issue #27)
+Documentation=https://github.com/danielesalpietro/kickstart-berlin/issues/27
+Conflicts=getty@tty1.service
+After=getty@tty1.service network-online.target local-fs.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/opt/kickstart-berlin/console-status.sh
+StandardInput=null
+StandardOutput=tty
+StandardError=journal
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+Restart=always
+RestartSec=2
+UtmpIdentifier=tty1
+UtmpMode=user
+
+[Install]
+WantedBy=multi-user.target

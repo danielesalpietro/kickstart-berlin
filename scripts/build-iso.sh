@@ -401,6 +401,15 @@ cp "${REPO_ROOT}/postinstall/kickstart-berlin-postinstall.service" "${POSTINSTAL
 # automatica di setup.sh (vedi commenti in ciascun file).
 cp "${REPO_ROOT}/postinstall/install-vastai-host.sh" "${POSTINSTALL_STAGE}/"
 cp "${REPO_ROOT}/postinstall/vastai-self-test.sh" "${POSTINSTALL_STAGE}/"
+# console-status.sh (issue #27): stessi placeholder Datastore di setup.sh
+# (stesso convenzione DATASTORE_LINK), automatico via console_status_setup()
+# in setup.sh. Il file .service non ha placeholder, copiato così com'è.
+sed \
+    -e "s|__DATASTORE_MOUNT_ROOT__|${DEFAULT_DATASTORE_MOUNT_ROOT}|g" \
+    -e "s|__DATASTORE_SYMLINK_NAME__|${DEFAULT_DATASTORE_SYMLINK_NAME}|g" \
+    "${REPO_ROOT}/postinstall/console-status.sh" \
+  > "${POSTINSTALL_STAGE}/console-status.sh"
+cp "${REPO_ROOT}/postinstall/kickstart-berlin-console-status.service" "${POSTINSTALL_STAGE}/"
 
 VOLID="$(xorriso -indev "$SOURCE_ISO" -pvd_info 2>/dev/null \
   | awk -F': ' '/Volume Id/{print $2; exit}')"
