@@ -37,11 +37,14 @@ all'integrazione in [Grastorp](https://github.com/danielesalpietro/grastorp)
 | `docs/collaudo-funzionale.md` | Stato del collaudo: cosa è verificato in CI (automatico) vs cosa richiede ancora hardware/account reali (manuale, checklist per fase). Aggiornalo quando un test manuale viene eseguito. |
 | `docs/usb-boot.md` | Procedura di scrittura ISO su USB e note PXE/iPXE — test manuale di Fase 1. |
 | `logbook-fase1.md` … `logbook-fase8.md`, `logbook-fase10.md`, `logbook-fase11.md` | Diario per fase: decisioni negoziate con l'utente, bug trovati in sandbox e come sono stati corretti, cosa è "Verificato in sandbox" vs "Non verificabile per costruzione", prossimi passi. **Non esiste `logbook-fase9.md`/`fase12`/`fase13`/`fase14`: quelle fasi non sono ancora implementate.** |
+| `logbook_first_boot.md` | Diario **trasversale alle fasi** (non `logbook-faseN.md`) del primo collaudo end-to-end su hardware fisico reale (HP Z8 G4 + RTX 3090, 2026-08-23): bug trovati e corretti in `postinstall/setup.sh` dopo che le fasi erano già "In corso"/confermate solo in sandbox o su VM. Consultalo per capire *perché* certe righe di `setup.sh` hanno commenti che citano un collaudo reale specifico. Log grezzi (`lsblk`/`lscpu`/`lspci`/`nvidia-smi`) in [`first-boot-z8/`](first-boot-z8/). |
 | `config/autoinstall-defaults.json` | Unica fonte di verità per i default di build (versione Ubuntu, topologia dischi, parametri Datastore, range porte) — i flag CLI di `build-iso.sh` hanno sempre precedenza quando passati. |
 | `postinstall/setup.sh` | Sequenza automatica post-install (systemd oneshot al primo boot): `main()` chiama in ordine le `phaseN_...()` già implementate. Cresce per fase, **un file solo**, non uno script per fase. |
 | `postinstall/install-vastai-host.sh` | Script standalone Fase 7 — **mai** in `main()`, va lanciato a mano dall'operatore. |
 | `postinstall/vastai-self-test.sh` | Script standalone Fase 11 — **mai** in `main()`, richiede `machine_id` reale da Fase 7. |
+| `docs/setup.md` (+ `docs/setup.docx`, copia derivata) | Guida operativa passo-passo dal BIOS/UEFI al check finale per un operatore umano, con requisiti e tabella delle informazioni richieste — non ripete le motivazioni di design (quelle restano nei `logbook-faseN.md`). **Rigenera `setup.docx` da `setup.md`** (script docx-js, non nel repo) se cambi il sorgente Markdown: sono tenuti manualmente in sync, nessun automatismo li collega. |
 | `scripts/build-iso.sh` | Build dell'ISO: inietta `iso/user-data`, monta `postinstall/` nello staging ISO (`POSTINSTALL_STAGE`) — **ogni nuovo script standalone in `postinstall/` va aggiunto qui esplicitamente con `cp`**, non è copiato automaticamente. |
+| `.github/workflows/build-iso.yml` | Build ISO on-demand via GitHub Actions (tab Actions → "Run workflow"): stessa chiave SSH incollata a mano nel form (mai salvata), stesso `install-vastai-host.sh` mai incluso — alternativa al build locale con `scripts/build-iso.sh`, non lo sostituisce. |
 | `scripts/boot-test-qemu.sh` | Test di integrazione (CI): build ISO reale + boot QEMU/KVM, verifica login SSH e mount Datastore. |
 | `scripts/validate-autoinstall.py` | Validazione sintattica/strutturale di `iso/user-data` e `iso/storage-*-disk.yaml` (job "unit" in CI). |
 | `.github/workflows/ci.yml` | Definizione autorevole dei test automatici: job `validate-autoinstall` (ogni push/PR) e `build-and-boot-test` (push a `develop`/`main` o `workflow_dispatch`). |
@@ -119,6 +122,18 @@ fatto o a reintrodurre problemi già risolti.
    un'issue, verificare prima lo stato reale in `README.md`: potrebbe
    essere stato riordinato.**
 
+9. **Prima di continuare un branch feature esistente (incluso il tuo
+   stesso branch di una sessione precedente), fai `git fetch` e confronta
+   con `origin/develop`.** Altre sessioni possono aver mergiato lavoro nel
+   frattempo — successo concretamente il 2026-08-23: mentre il branch
+   `claude/vastai-fase7-integration-9eh1fw` restava fermo al commit del
+   merge della propria PR (#23), un'altra sessione ha fatto il primo
+   collaudo reale su hardware fisico (Z8), trovato 3 bug in
+   `postinstall/setup.sh`, e mergiato i fix in `develop` (PR #28) — tutto
+   invisibile finché qualcuno non l'ha fatto notare. Se il tuo branch ha
+   commit non ancora mergiati, `git rebase origin/develop` (mai
+   scartarli) prima di aggiungere altro lavoro o aprire una nuova PR.
+
 ## Vincoli d'ambiente noti (da non riscoprire ogni volta)
 
 - **Domini bloccati dalla policy di rete di questa sandbox di sviluppo**:
@@ -130,12 +145,16 @@ fatto o a reintrodurre problemi già risolti.
   Se l'utente fornisce un PDF/file scaricato da `docs.vast.ai` o da
   `vast.ai`, è spesso l'unico modo di avere quell'informazione verificata
   in questa sessione — leggerlo per intero prima di supporre.
-- **Hardware GPU reale**: HP Z8 G4, non disponibile fino al 23/08/2026 (a
-  seconda della data della sessione, potrebbe essere già disponibile —
-  verificare lo stato in `README.md`). Fino ad allora: VM Azure (rete
-  diretta, nessuna GPU) usata per validare i percorsi di rete/installer
-  che il sandbox di sviluppo blocca; percorsi GPU-reale restano
-  "Da fare" in `docs/collaudo-funzionale.md`.
+- **Hardware GPU reale**: HP Z8 G4 + RTX 3090, disponibile e già usato per
+  un primo collaudo reale il 2026-08-23 (vedi `logbook_first_boot.md`) —
+  Fasi 1-6, 8, 10 confermate su hardware fisico, Fase 7/11 (daemon
+  Vast.ai reale, self-test) ancora da eseguire sullo stesso nodo. **Ha
+  moduli Intel Optane PMem installati**: la selezione disco `match: {}`
+  non li esclude, quindi l'esito del partizionamento non è deterministico
+  su questo nodo specifico — vedi `docs/collaudo-funzionale.md`, sezione
+  "Problemi noti". Verificare comunque lo stato aggiornato in
+  `docs/collaudo-funzionale.md` prima di assumere che un test sia ancora
+  "Da fare": questa nota può invecchiare.
 - **Branch di lavoro**: le sessioni Claude Code su questo repo sviluppano
   su branch dedicati per fase/argomento (es.
   `claude/vastai-fase7-integration-9eh1fw`) — controllare il branch

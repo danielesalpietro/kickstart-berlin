@@ -109,9 +109,12 @@ reale (Z8, dal 23/08, o istanza GPU cloud dedicata).
 - [x] Testare su un host con rete diretta (VM Azure) l'installazione
       Docker vera e la config del runtime NVIDIA — **confermato sopra**,
       incluso il punto critico data-root/merge JSON.
-- [ ] Confermare `docker run --rm --gpus all ...` vede davvero la GPU —
-      richiede hardware NVIDIA reale (Z8 o istanza GPU cloud dedicata),
-      stesso limite già documentato per Fase 4.
-- [ ] Aprire la PR quando confermato il percorso driver+GPU reale su
-      hardware fisico (unico punto ancora aperto; Docker/runtime su rete
-      diretta ora confermati per Fase 4 e Fase 5).
+- [x] Confermare `docker run --rm --gpus all ...` vede davvero la GPU —
+      **confermato il 2026-08-23** su HP Z8 G4 + RTX 3090, vedi
+      [`logbook_first_boot.md`](logbook_first_boot.md). Nota: il tag
+      `nvidia/cuda:12.4.1-base-ubuntu24.04` usato come riferimento in
+      `docs/setup.md` è risultato ritirato da Docker Hub durante questo
+      collaudo — sostituito con `12.6.0-base-ubuntu24.04` (già corretto
+      in `docs/setup.md`).
+- [x] Aprire la PR — fatto (PR #28, `claude/postinstall-firstboot-fixes`,
+      mergiata in `develop`).
