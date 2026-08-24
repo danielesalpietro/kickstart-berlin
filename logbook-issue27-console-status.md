@@ -168,10 +168,73 @@ Su richiesta dell'utente, due estensioni:
   login interattive) — non testabile con lo stesso approccio "one-off"
   usato altrove in questo repo, da qui la verifica via `run-parts`.
 
+## 2026-08-24 — Restyling tty1 in stile ESXi (curses), da mockup dell'utente
+
+L'utente ha creato `esxi_mockup.py` sul nodo (Python + `curses`: barra
+header/footer gialla su nero, dialog box centrato, stile DCUI reale)
+chiedendo se riutilizzarlo per la schermata tty1 e per futuri setup
+guidati da console. Due percorsi separati (vedi anche issue nuova
+aperta per il secondo, sotto):
+
+**tty1 (questa issue)**: `postinstall/console-status.sh` (bash)
+sostituito da **`postinstall/console-status.py`** (Python +
+`curses`, stile ESXi: barra header/footer gialla, corpo nero). La
+raccolta dati **resta** in `lib-node-status.sh` (bash) — il nuovo
+script Python chiama quelle funzioni via `subprocess` invece di
+duplicarle, unica fonte di verità per la logica. Il banner SSH
+(`motd-vastai-status`) resta testo semplice, invariato: `curses` non
+ha senso lì (un client SSH vede il MOTD come scrollback statico, non
+una TUI viva).
+
+**Verifica tecnica preliminare, prima di scrivere qualunque codice**:
+il requisito "sola lettura" dell'issue era finora garantito due volte
+(la unit systemd con `StandardInput=null` E lo script che non legge
+mai stdin) — `curses` normalmente legge input (`stdscr.getch()`), va
+verificato che **non serva** per farlo funzionare con `stdin=/dev/null`
+prima di eventualmente indebolire quella doppia protezione. Testato
+empiricamente sul nodo reale (`curses.wrapper` con stdin da `/dev/null`,
+stdout sul vero `/dev/tty1`): **fallisce**, ma non per `stdin` — per
+`TERM` non impostata (`setupterm: could not find terminal`, il
+servizio non la esporta). Con `TERM=linux` impostata esplicitamente
+(il terminfo corretto per una console Linux VT) **funziona
+correttamente anche con `stdin=/dev/null`** — curses usa `stdout` per
+tutto ciò che serve in questo caso (rendering + dimensioni terminale),
+non ha mai avuto bisogno di leggere `stdin`. Risultato pratico:
+`StandardInput=null` resta invariato nella unit, `console-status.py`
+non chiama **mai** `stdscr.getch()` in nessun punto (il refresh usa
+`time.sleep()`, non un timeout su lettura input) — difesa in
+profondità originale intatta, garantita ora sia dalla unit sia
+dal codice per costruzione (non chiama la funzione che leggerebbe
+input, non solo "sceglie di ignorarne il risultato").
+
+`kickstart-berlin-console-status.service` aggiornato:
+`ExecStart=/usr/bin/python3 /opt/kickstart-berlin/console-status.py`
+(interprete esplicito, evita di dipendere dal bit eseguibile/shebang —
+`console-status.py` non è più coperto dal `chmod +x *.sh` automatico
+delle late-commands, essendo `.py` non `.sh`).
+
+**Verificato end-to-end su hardware reale (Z8)**: servizio `active
+(running)`, contenuto renderizzato confermato via dump del framebuffer
+(`/dev/vcs1`) — stesso contenuto già verificato per la versione bash
+(inclusa la sezione Vast.ai), nessun crash, header/footer a piena
+larghezza. **Non verificabile da questa sessione**: la resa reale dei
+colori (giallo/nero) — `/dev/vcs1` è un dump testuale, non cattura gli
+attributi colore; serve conferma visiva diretta sullo schermo fisico.
+
+**Nuova issue aperta** per il secondo caso d'uso del mockup (setup
+guidati da console, stile `<F2> Customize System`): salto di scopo
+importante rispetto a una schermata di sola lettura — significherebbe
+dare alla console locale la capacità di *modificare* lo stato del
+sistema, in tensione diretta con la progettazione "solo chiave SSH,
+mai un modo di accesso/azione locale" di CLAUDE.md e di questa stessa
+issue. Non implementato qui, serve una discussione di sicurezza
+dedicata.
+
 ## Stato
 
 Verificato end-to-end su hardware reale (Z8, RTX 3090), incluse le due
-modalità (tty1 + banner SSH) e la sezione Vast.ai. Non ancora
+modalità (tty1, ora in stile ESXi via curses + banner SSH) e la sezione
+Vast.ai. Non ancora
 verificato: comportamento dopo un vero riavvio completo del nodo (il
 collaudo qui ha installato/abilitato tty1+MOTD a caldo su un sistema
 già avviato, non tramite un ciclo autoinstall→boot→postinstall completo
@@ -188,3 +251,7 @@ grado di conferma delle Fasi già passate per un boot reale completo.
       (attivo/inattivo, porte aperte) — non incluso nella prima
       versione, l'issue originale non lo richiedeva esplicitamente tra
       le "informazioni minime".
+- [ ] Conferma visiva diretta dei colori (giallo/nero) sullo schermo
+      fisico della console-status.py — non verificabile da questa
+      sessione (solo dump testuale via `/dev/vcs1`, niente attributi
+      colore).

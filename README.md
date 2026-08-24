@@ -364,15 +364,18 @@ richiesta esplicita, non ancora implementata.)*
 *(Non una delle 14 fasi mappate da Vast.ai — Vast.ai non ha un
 equivalente: aggiunta originale, ispirata alla DCUI di VMware ESXi.)*
 
-- `postinstall/lib-node-status.sh` (libreria condivisa) +
-  `postinstall/console-status.sh` + `postinstall/motd-vastai-status` +
+- `postinstall/lib-node-status.sh` (libreria condivisa, bash) +
+  `postinstall/console-status.py` + `postinstall/motd-vastai-status` +
   `postinstall/kickstart-berlin-console-status.service`, installati e
   abilitati da `console_status_setup()` in `postinstall/setup.sh`
   (automatica, nessun segreto coinvolto — stesso criterio di Fase 10).
-  Due presentazioni della stessa informazione:
+  Due presentazioni della stessa informazione (stessa raccolta dati in
+  `lib-node-status.sh`, chiamata via `subprocess` da Python invece che
+  duplicata):
   - **tty1**: rimpiazza il prompt di login (comunque inutilizzabile:
     nessuna password valida per design) con una schermata di sola
-    lettura, refresh ogni 30s.
+    lettura in stile DCUI VMware ESXi (Python + `curses`: barra
+    header/footer gialla su corpo nero), refresh ogni 30s.
   - **Banner SSH al login**: le stesse informazioni, installate come
     `/etc/update-motd.d/50-kickstart-berlin` (eseguito da Ubuntu ad
     ogni login SSH via `pam_motd`, integrato col MOTD standard).

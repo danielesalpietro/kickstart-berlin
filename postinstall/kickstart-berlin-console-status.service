@@ -7,7 +7,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/opt/kickstart-berlin/console-status.sh
+# Interprete esplicito invece di affidarsi a shebang+bit eseguibile sul
+# file: console-status.py non è più coperto dal chmod +x automatico di
+# *.sh nelle late-commands di iso/user-data (era .sh, ora .py) - questo
+# evita del tutto il problema invece di allargare quel glob.
+ExecStart=/usr/bin/python3 /opt/kickstart-berlin/console-status.py
 StandardInput=null
 StandardOutput=tty
 StandardError=journal
