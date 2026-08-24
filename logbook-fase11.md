@@ -162,12 +162,72 @@ L'unico blocco residuo per superare il self-test è la rete fisica
 (serve una connessione con banda simmetrica sufficiente) — non
 risolvibile da questo repo.
 
+## 2026-08-24 — Scoperta esplorando `/var/lib/vastai_kaalia/`: `--ignore-requirements` bypassa banda/reliability
+
+Su suggerimento dell'utente ("nella cartella vastai ci sono molti .py
+ed altro... capire come funziona fa sempre bene"), letto
+`start_self_test.sh` (script interno del daemon Kaalia, non
+documentato nella guida ufficiale che avevamo). Rivela il **vero flusso
+automatico** del daemon, diverso da quanto testato finora a mano:
+
+1. Il daemon aspetta 10 minuti dopo l'avvio, poi controlla se la
+   macchina è già listata (`vast show machine --raw | grep listed`).
+2. Se non lo è: la lista **temporaneamente** (scadenza 3 ore da quel
+   momento), lancia `vast self-test machine <ID> --ignore-requirements`,
+   poi la **de-lista** comunque alla fine, sia in caso di successo che
+   di fallimento — un listing è solo un mezzo per il test, non
+   l'obiettivo.
+
+Il dettaglio chiave: il daemon usa sempre `--ignore-requirements`,
+flag mai passato nei nostri test manuali. Riprovato con
+`vastai-self-test.sh --machine-id 148447 -- --ignore-requirements`
+(il passthrough dopo `--` era già supportato dal nostro script, mai
+usato finora):
+
+- **Confermato**: bypassa correttamente i tre gate falliti prima
+  (reliability, download, upload) — log esplicito "Continuing despite
+  unmet requirements because --ignore-requirements is set." Coerente
+  con quanto già annotato dalla guida ufficiale ("anche in modalità
+  --ignore-requirements servono almeno 3 porte dirette aperte" — sotto
+  quella soglia fallirebbe comunque; il nostro host ne ha 16385 aperte).
+- Seleziona correttamente l'immagine di test in base alla CUDA
+  dell'host (`vastai/test:self-test-v2-cuda-13.0` per CUDA 13.2 /
+  compute_cap 860, RTX 3090) — logica di compatibilità non documentata
+  altrove, utile saperla.
+- **Nuovo blocco**, diverso dai precedenti: `Error creating instance:
+  403 Client Error: Forbidden for url: .../asks/48511760/` — fallisce
+  nel creare l'istanza diagnostica temporanea (cioè "affittare" la
+  propria macchina per testarla), non nella lettura dei dati.
+
+**Causa isolata**: `vastai show user` mostra `Can Pay: False` e
+`Billing Creditonly: 1` — l'account non ha (ancora) un metodo di
+pagamento pienamente verificato, nonostante l'utente abbia aggiunto
+PayPal durante questa sessione (il campo non è cambiato subito dopo
+l'aggiunta — probabile verifica aggiuntiva in sospeso lato Vast.ai,
+es. conferma email/microtransazione, o propagazione non istantanea).
+Anche un "noleggio verso se stessi" per il self-test richiede
+evidentemente che l'account risulti abilitato a pagare. **Non
+risolvibile da questo repo** — dipende dallo stato dell'account Vast.ai
+dell'utente, non dallo stack software.
+
 ## Prossimi passi
 
 - [x] Eseguire il self-test reale — **fatto sopra**, `machine_id`
       148447.
-- [ ] Ripetere il self-test quando il nodo sarà su una connessione con
-      banda sufficiente (>= 100 Mbps simmetrici) — non prima, il
-      risultato sarebbe identico per lo stesso motivo.
+- [x] Trovare un modo per bypassare i gate di banda/reliability
+      (bloccanti su questa rete) — **`--ignore-requirements` confermato
+      funzionante** per quello scopo specifico.
+- [ ] Riprovare il self-test con `--ignore-requirements` non appena
+      `vastai show user` mostra `Can Pay: True` (verifica PayPal
+      completata lato utente) — a quel punto dovrebbe arrivare fino in
+      fondo, dato che gli altri due blocchi (permessi API, listing
+      mancante, banda/reliability) sono già stati superati uno per uno.
+- [ ] Valutare se aggiungere `--ignore-requirements` come default (o
+      opzione documentata) in `postinstall/vastai-self-test.sh` per
+      collaudi futuri su reti non conformi ai requisiti Vast.ai —
+      **da decidere con l'utente**, non implementato in questa
+      sessione: bypassare i requisiti di verifica ha implicazioni
+      (guida ufficiale: "passing this self-test does not qualify this
+      machine for verification" con questo flag).
 - [ ] Aprire/aggiornare la PR includendo Fasi 10 e 11 insieme, dato che
       condividono la stessa dipendenza bloccante — ora sbloccata.
