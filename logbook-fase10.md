@@ -124,10 +124,20 @@ hardcoded o committato nel repo.
 
 ## Prossimi passi
 
-- [ ] Eseguire `phase10_vastai_cli()` su un host reale con accesso di
-      rete a `vast.ai`: confermare che l'installer funzioni, che
-      `vastai` risulti su PATH (con o senza il fallback di symlink), e
-      che `vastai set api-key` + `vastai show user` funzionino come
-      documentato.
-- [ ] Una volta confermato, la CLI è il prerequisito diretto per
+- [x] Eseguire `phase10_vastai_cli()` su un host reale con accesso di
+      rete a `vast.ai` — **confermato il 2026-08-23** su HP Z8 G4:
+      `vastai 1.5.5` installato. Due bug trovati e corretti durante
+      questo collaudo (nessuno dei due nel fallback PATH già corretto in
+      questa sessione — sono nuovi, precedenti nella pipeline): `$HOME`
+      non definita nell'ambiente del servizio systemd (l'installer
+      ufficiale la referenzia e fallisce), e permessi `/root` (700 di
+      default) bloccavano l'esecuzione di `vastai` da utente `admin`
+      senza sudo pur essendo il comando su PATH — vedi
+      [`logbook_first_boot.md`](logbook_first_boot.md) (Problemi 3 e 4)
+      per il dettaglio completo, fix già applicati in
+      `postinstall/setup.sh` (PR #28, mergiata in `develop`).
+      `vastai set api-key`/`vastai show user` non ancora eseguiti in
+      quel collaudo (si è fermato subito dopo l'installazione) — resta
+      da fare, vedi `docs/collaudo-funzionale.md`.
+- [ ] Una volta autenticata, la CLI è il prerequisito diretto per
       Fase 11 (`vastai-self-test.sh`) — vedi `logbook-fase11.md`.

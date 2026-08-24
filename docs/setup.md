@@ -99,6 +99,15 @@ solo, partiziona i dischi secondo la topologia scelta a Step 0, installa
 Ubuntu Server e inietta la chiave SSH. Al termine il nodo si riavvia da
 solo.
 
+> **Problema noto — moduli Optane PMem**: la selezione del disco
+> (`match: {}` in `iso/storage-*-disk.yaml`) non esclude i device
+> `/dev/pmem*`. Su un nodo con moduli Intel Optane Persistent Memory
+> installati, l'installazione può finire lì invece che sul disco
+> SATA/NVMe atteso (esito comunque utilizzabile — PMem è più veloce —
+> ma non deterministico). Dopo il primo boot verifica con `lsblk` dove
+> sono finiti root/ESP/Datastore prima di procedere. Non ancora corretto
+> in questo repo — vedi `logbook_first_boot.md` (Problema 1).
+
 ### Step 3 — Postinstall automatico (Fasi 3-6, 8, 10 — dal contenuto congelato nell'ISO)
 
 Al primo boot post-installazione, `kickstart-berlin-postinstall.service`
@@ -213,8 +222,10 @@ riprova.
 - [ ] `vastai show machines` mostra il nodo come listato e attivo.
 - [ ] `/opt/kickstart-berlin/hardware-info.json` (Fase 8) ha il campo
       `nvidia_gpu` popolato con la RTX 3090 (non vuoto/errore).
-- [ ] `docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu24.04 nvidia-smi`
-      mostra la GPU dentro un container.
+- [ ] `docker run --rm --gpus all nvidia/cuda:12.6.0-base-ubuntu24.04 nvidia-smi`
+      mostra la GPU dentro un container (il tag `12.4.1-base-ubuntu24.04`
+      citato in precedenza risulta ritirato da Docker Hub — confermato
+      sul collaudo reale del 2026-08-23, vedi `logbook_first_boot.md`).
 - [ ] Self-test Fase 11 (Step 8) completato con successo.
 - [ ] Porte aperte confermate sia su `ufw` (Fase 6, automatico) sia sul
       router (Step 6, manuale).

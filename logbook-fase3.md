@@ -459,8 +459,16 @@ stato già corretto (`/etc/docker/daemon.json`, symlink `/var/lib/docker`)
       del leak vmbus/Hyper-V annidato per l'anomalia hostname — solo se
       si vuole chiudere la curiosità, non impatta la correttezza del
       prodotto.
-- [ ] Conferma su hardware fisico bare-metal reale — fuori scope di
-      questa sessione, non disponibile fino al 23/08 (Z8).
+- [x] Conferma su hardware fisico bare-metal reale — **eseguita il
+      2026-08-23** su HP Z8 G4 (confermata indirettamente: la Fase 4 ha
+      potuto partire, quindi la Fase 3 è completata senza errori). Trovato
+      però un problema di portabilità non ancora corretto: la selezione
+      disco `match: {}` di `iso/storage-single-disk.yaml` non esclude i
+      moduli Optane PMem, quindi su questo nodo (che li ha installati)
+      il Datastore è finito su `/dev/pmem0s*` invece che su `sda` —
+      esito accettato dall'utente ma non deterministico, vedi
+      [`logbook_first_boot.md`](logbook_first_boot.md) (Problema 1) e
+      `docs/collaudo-funzionale.md`.
 - [ ] Verificare lo scenario CI GitHub Actions reale (`workflow_dispatch`)
       con tutti i fix di questa sessione, per un secondo riscontro
       indipendente dall'ambiente Azure annidato.

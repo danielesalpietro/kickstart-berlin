@@ -110,8 +110,9 @@ solo con dati reali invece che vuoti/assenti. Pulizia post-test
       responsabilità del backend Grastorp consumare lo snapshot grezzo.
 - [x] Confermare su hardware reale (VM Azure o Z8) che `dmidecode`
       restituisca dati reali — **confermato sopra**.
-- [ ] Confermare `nvidia_gpu` con una GPU reale presente (Z8 o istanza
-      dedicata) — qui verificato solo il percorso di fallback corretto
-      in assenza di GPU.
-- [ ] Aprire la PR (la raccolta dati è ora confermata su host reale;
-      resta aperta solo la conferma col campo `nvidia_gpu` popolato).
+- [x] Confermare `nvidia_gpu` con una GPU reale presente (Z8 o istanza
+      dedicata) — **confermato il 2026-08-23**: `nvidia_gpu` = "NVIDIA
+      GeForce RTX 3090, 24576 MiB, 595.84" su HP Z8 G4, vedi
+      [`logbook_first_boot.md`](logbook_first_boot.md).
+- [x] Aprire la PR — fatto (PR #28, `claude/postinstall-firstboot-fixes`,
+      mergiata in `develop`); DoD dell'issue #8 ora completa.

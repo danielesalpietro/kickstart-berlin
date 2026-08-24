@@ -5,14 +5,19 @@ boot fino a un host pronto (OS, driver NVIDIA, Docker, rete, benchmark
 hardware). Base derivata dal flusso di setup host di **Vast.ai**, propedeutica
 all'integrazione in [Grastorp](https://github.com/danielesalpietro/grastorp).
 
-> Stato: **early stage**. Fasi 1-5 implementate e validate end-to-end su
-> hardware/rete reali (CI, Hyper-V, VM Azure con KVM reale) — vedi
-> [`logbook-fase1.md`](logbook-fase1.md) … [`logbook-fase5.md`](logbook-fase5.md)
-> per il dettaglio di ciascuna. Fase 6 (rete) implementata, in attesa di
-> conferma su host reale — vedi [`logbook-fase6.md`](logbook-fase6.md).
-> Resta sospesa, per tutte le fasi che la richiedono, la conferma finale
-> su hardware fisico con GPU reale (HP Z8 G4, non disponibile fino al
-> 23/08). Le fasi successive sono ancora da fare.
+> Stato: **early stage**, ma con la prima conferma end-to-end su hardware
+> fisico reale (HP Z8 G4 + RTX 3090, primo boot 2026-08-23) per le Fasi
+> 1-6, 8 e 10 — vedi [`logbook_first_boot.md`](logbook_first_boot.md) per
+> il diario completo del collaudo (3 bug trovati e corretti in
+> `postinstall/setup.sh`: pacchetti NVIDIA "fantasma" in Fase 4, `$HOME`
+> non definita e permessi `/root` in Fase 10) e
+> [`docs/collaudo-funzionale.md`](docs/collaudo-funzionale.md) per lo
+> stato aggiornato test-per-test. Fase 7 (daemon Vast.ai reale) e Fase 11
+> (self-test) restano da eseguire sullo stesso nodo — vedi
+> [`docs/setup.md`](docs/setup.md), Step 5 in poi. **Problema noto**: la
+> selezione automatica del disco (`match: {}`) non esclude i moduli
+> Optane PMem, quindi su hardware con PMem installato l'esito non è
+> deterministico — vedi `docs/collaudo-funzionale.md`.
 
 ## Perché
 

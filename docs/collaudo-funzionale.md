@@ -28,18 +28,31 @@ dall'operatore quando l'ambiente è disponibile; stato aggiornato via PR.
 
 | Fase | Test | Come | Prerequisito | Stato |
 |---|---|---|---|---|
-| 1 | Scrittura ISO su chiavetta USB reale e boot da USB | Procedura in [`docs/usb-boot.md`](usb-boot.md) | ISO buildata | Da fare |
-| 3 | Preparazione storage su bare-metal reale | Boot autoinstall su Z8 | Z8 disponibile | Da fare |
-| 4 | Driver NVIDIA + riavvio + `nvidia-smi` + NVIDIA Container Toolkit funzionante | Boot autoinstall su Z8 (GPU reale) | Z8 disponibile | Da fare |
-| 5 | `docker run --rm --gpus all ...` vede davvero la GPU | Sullo stesso host di Fase 4 | GPU NVIDIA reale attiva | Da fare |
-| 7 | Compatibilità dell'intero stack col daemon host Vast.ai (Kaalia) | `./postinstall/install-vastai-host.sh` con comando reale da `cloud.vast.ai/host/setup` (valido 1h, generato dall'utente) | Host con rete diretta, stack Fasi 1-6 completato | Da fare |
-| 8 | Campo `nvidia_gpu` popolato con dati reali | `phase8_hardware_info()` su host con GPU reale | GPU NVIDIA reale attiva | Da fare |
-| 10 | Installer CLI reale (`vast.ai/install.sh`): `vastai` su PATH, `vastai set api-key` + `vastai show user` | `phase10_vastai_cli()` su host con accesso di rete a `vast.ai` | Rete diretta verso `vast.ai` | Da fare |
-| 11 | Self-test ufficiale Vast.ai su una macchina realmente listata | `./postinstall/vastai-self-test.sh --machine-id <ID>` | Fase 7 completata con listing riuscito (`machine_id` reale) + Fase 10 completata (CLI autenticata) | Da fare |
+| 1 | Scrittura ISO su chiavetta USB reale e boot da USB | Procedura in [`docs/usb-boot.md`](usb-boot.md) | ISO buildata | Da fare (il boot fisico del 2026-08-23 è avvenuto, ma il mezzo di scrittura USB non è esplicitamente confermato in `logbook_first_boot.md` — non affermarlo come testato) |
+| 3 | Preparazione storage su bare-metal reale | Boot autoinstall su Z8 | Z8 disponibile | **Confermato (indiretto)** — 2026-08-23, HP Z8 G4: nessun errore riportato (Fase 4 ha potuto partire, quindi Fase 3 è completata), ma il Datastore è finito sui moduli Optane PMem invece che sul disco SATA `sda` — vedi "Problemi noti" sotto e `logbook_first_boot.md` (Problema 1) |
+| 4 | Driver NVIDIA + riavvio + `nvidia-smi` + NVIDIA Container Toolkit funzionante | Boot autoinstall su Z8 (GPU reale) | Z8 disponibile | **Confermato** — 2026-08-23, HP Z8 G4 + RTX 3090, driver 595.84/CUDA 13.2. Bug trovato e corretto: `apt-mark hold` falliva su pacchetti "fantasma" restituiti da `dpkg-query -W` non filtrati per stato installato — vedi `logbook_first_boot.md` (Problema 2) |
+| 5 | `docker run --rm --gpus all ...` vede davvero la GPU | Sullo stesso host di Fase 4 | GPU NVIDIA reale attiva | **Confermato** — 2026-08-23, GPU visibile nel container. Nota: il tag `nvidia/cuda:12.4.1-base-ubuntu24.04` citato in `docs/setup.md` risulta ritirato da Docker Hub, verificato invece con `12.6.0-base-ubuntu24.04` |
+| 7 | Compatibilità dell'intero stack col daemon host Vast.ai (Kaalia) | `./postinstall/install-vastai-host.sh` con comando reale da `cloud.vast.ai/host/setup` (valido 1h, generato dall'utente) | Host con rete diretta, stack Fasi 1-6 completato | Da fare — non ancora raggiunto nella sessione del 2026-08-23 (fermata a Fase 10), vedi "Prossimi passi" in `logbook_first_boot.md` |
+| 8 | Campo `nvidia_gpu` popolato con dati reali | `phase8_hardware_info()` su host con GPU reale | GPU NVIDIA reale attiva | **Confermato** — 2026-08-23, `nvidia_gpu` = "NVIDIA GeForce RTX 3090, 24576 MiB, 595.84" |
+| 10 | Installer CLI reale (`vast.ai/install.sh`): `vastai` su PATH, `vastai set api-key` + `vastai show user` | `phase10_vastai_cli()` su host con accesso di rete a `vast.ai` | Rete diretta verso `vast.ai` | **Confermato** — 2026-08-23, `vastai 1.5.5` installato. Due bug trovati e corretti: `$HOME` non definita nell'ambiente del servizio systemd (installer falliva), e permessi `/root` (700) bloccavano l'esecuzione da utente `admin` senza sudo — vedi `logbook_first_boot.md` (Problemi 3 e 4). Autenticazione (`vastai set api-key`/`show user`) non ancora eseguita |
+| 11 | Self-test ufficiale Vast.ai su una macchina realmente listata | `./postinstall/vastai-self-test.sh --machine-id <ID>` | Fase 7 completata con listing riuscito (`machine_id` reale) + Fase 10 completata (CLI autenticata) | Da fare — blocca su Fase 7 |
 
 Già confermato su hardware reale (non più da ripetere, vedi il logbook
 della fase per il dettaglio): Fase 2 (partizionamento, HP Z8 G4 + VM
-Hyper-V Gen2), Fase 6 (regole `ufw` scritte correttamente).
+Hyper-V Gen2), Fase 6 (regole `ufw` scritte correttamente — installato
+ma inattivo sul nodo Z8 del 23/08, comportamento voluto: non tocca la
+postura firewall esistente).
+
+## Problemi noti (non bloccanti, in attesa di fix)
+
+- **Selezione disco non deterministica con moduli Optane PMem**:
+  `iso/storage-single-disk.yaml`/`storage-dual-disk.yaml` usano
+  `match: {}` (curtin: "un disco qualsiasi"), senza esclusione dei
+  device `/dev/pmem*`. Su hardware con Optane installato (come la Z8 G4
+  di collaudo) l'installazione può finire sul PMem invece che sul disco
+  SATA/NVMe atteso — tecnicamente utilizzabile (PMem è più veloce), ma
+  non deterministico. Non ancora corretto nel repo — vedi
+  `logbook_first_boot.md` (Problema 1) e "Prossimi passi" lì.
 
 ## Convenzione
 

@@ -178,13 +178,13 @@ disponibile dal 23/08, o un'istanza GPU cloud dedicata).
 - [x] Testare su VM Azure (rete diretta, senza GPU): confermare che i
       comandi di aggiunta repository + installazione pacchetto del
       NVIDIA Container Toolkit funzionino davvero — **confermato sopra**.
-- [ ] Testare il percorso completo (driver + riavvio + `nvidia-smi` +
+- [x] Testare il percorso completo (driver + riavvio + `nvidia-smi` +
       Container Toolkit funzionante) su hardware con GPU NVIDIA reale —
-      Z8 quando disponibile (23/08), o istanza GPU cloud dedicata se si
-      vuole anticipare (RunPod scartato per questo scopo specifico: solo
-      Pod containerizzati con driver già gestito dall'host, non adatto a
-      testare la nostra installazione da zero — vedi discussione in
-      sessione).
-- [ ] Aprire la PR quando: verificato il percorso driver+GPU su hardware
-      reale (unico punto ancora aperto della DoD completa dell'issue #4;
-      il Container Toolkit su rete diretta è ora confermato).
+      **confermato il 2026-08-23** su HP Z8 G4 + RTX 3090 (driver 595.84,
+      CUDA 13.2). Bug trovato e corretto durante questo collaudo:
+      `apt-mark hold` su pacchetti `nvidia-*` falliva per voci "fantasma"
+      restituite da `dpkg-query -W` non filtrate per stato installato —
+      vedi [`logbook_first_boot.md`](logbook_first_boot.md) (Problema 2)
+      per il dettaglio completo, fix già applicato in `postinstall/setup.sh`.
+- [x] Aprire la PR — fatto (PR #28, `claude/postinstall-firstboot-fixes`,
+      mergiata in `develop`); DoD dell'issue #4 ora completa.
