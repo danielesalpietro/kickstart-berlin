@@ -26,6 +26,8 @@ CACHE_DIR=""
 SKIP_GPG_CHECK="${SKIP_GPG_CHECK:-0}"
 UBUNTU_VERSION=""
 SYSTEM_PARTITION_SIZE=""
+DISK_SERIAL=""
+DATASTORE_DISK_SERIAL=""
 DISK_TOPOLOGY=""
 HOSTNAME_PREFIX=""
 PORT_RANGE_START=""
@@ -109,6 +111,29 @@ Opzioni:
                              più piccolo, datastore sull'altro per intero).
                              Default da config/autoinstall-defaults.json:
                              $([[ "$DISK_TOPOLOGY" == dual ]] && echo 2 || echo 1).
+      --disk-serial <serial> Pin esatto (match "serial" di Subiquity,
+                             vedi Autoinstall configuration reference)
+                             del disco di sistema (topologia "single":
+                             anche Datastore) al posto dell'allowlist
+                             generico per path (nvme*/sd*/vd*). Serve
+                             solo su nodi con PIU' dischi reali
+                             candidabili contemporaneamente (es. altri
+                             dischi con OS/dati preesistenti ancora
+                             collegati durante l'installazione) - in
+                             quel caso l'allowlist generico non basta a
+                             garantire quale sia scelto. Consigliato:
+                             scollegare fisicamente i dischi non
+                             destinati a questa installazione invece di
+                             affidarsi solo a questo flag, quando
+                             possibile (piu' sicuro in assoluto) - vedi
+                             logbook_first_boot.md. Default: nessuno
+                             (usa l'allowlist generico).
+      --datastore-disk-serial <serial>
+                             Come --disk-serial, ma per il disco
+                             Datastore nella sola topologia "dual"
+                             (errore se passato con --disks 1: in quella
+                             topologia sistema e Datastore condividono
+                             lo stesso disco, vedi --disk-serial).
       --hostname-prefix <p>  Prefisso per l'hostname (minuscolo, cifre e
                              trattini, deve iniziare con una lettera).
                              L'hostname finale <prefix>-XXXX (XXXX: fino a
@@ -157,6 +182,8 @@ while [[ $# -gt 0 ]]; do
         *) err "--disks accetta solo 1 o 2, ricevuto: $2" ;;
       esac
       shift 2 ;;
+    --disk-serial) DISK_SERIAL="$2"; shift 2 ;;
+    --datastore-disk-serial) DATASTORE_DISK_SERIAL="$2"; shift 2 ;;
     --hostname-prefix) HOSTNAME_PREFIX="$2"; shift 2 ;;
     --port-range)
       [[ "$2" =~ ^([0-9]+)-([0-9]+)$ ]] || err "--port-range formato non valido: $2 (atteso START-END, es. 16384-32768)"
@@ -172,6 +199,29 @@ done
 STORAGE_FRAGMENT="${REPO_ROOT}/iso/storage-${DISK_TOPOLOGY}-disk.yaml"
 [[ -f "$STORAGE_FRAGMENT" ]] \
   || err "frammento storage non trovato per topologia '${DISK_TOPOLOGY}': ${STORAGE_FRAGMENT}"
+
+[[ -z "$DATASTORE_DISK_SERIAL" || "$DISK_TOPOLOGY" == "dual" ]] \
+  || err "--datastore-disk-serial richiede --disks 2 (topologia 'single': sistema e Datastore condividono lo stesso disco, usa solo --disk-serial)"
+
+# Valore YAML flow-style per il placeholder __SYSTEM_DISK_MATCH__/
+# __DATASTORE_DISK_MATCH__ nel frammento storage scelto sopra: un match
+# per serial esatto se richiesto esplicitamente (--disk-serial/
+# --datastore-disk-serial), altrimenti l'allowlist generico per path
+# (nvme*/sd*/vd*, esclude sempre i moduli PMem) - vedi commenti in
+# iso/storage-single-disk.yaml e iso/storage-dual-disk.yaml.
+if [[ -n "$DISK_SERIAL" ]]; then
+  SYSTEM_DISK_MATCH="{serial: \"${DISK_SERIAL}\"}"
+elif [[ "$DISK_TOPOLOGY" == "dual" ]]; then
+  SYSTEM_DISK_MATCH='[{path: /dev/nvme*n1, size: smallest}, {path: /dev/sd*, size: smallest}, {path: /dev/vd*, size: smallest}]'
+else
+  SYSTEM_DISK_MATCH='[{path: /dev/nvme*n1}, {path: /dev/sd*}, {path: /dev/vd*}]'
+fi
+
+if [[ -n "$DATASTORE_DISK_SERIAL" ]]; then
+  DATASTORE_DISK_MATCH="{serial: \"${DATASTORE_DISK_SERIAL}\"}"
+else
+  DATASTORE_DISK_MATCH='[{path: /dev/nvme*n1}, {path: /dev/sd*}, {path: /dev/vd*}]'
+fi
 
 for bin in xorriso curl sha256sum; do
   command -v "$bin" >/dev/null 2>&1 || err "comando richiesto non trovato: $bin"
@@ -320,6 +370,8 @@ sed -e "s| __STORAGE_CONFIG__\$||" \
     "${REPO_ROOT}/iso/user-data" \
   | sed \
       -e "s|__SSH_AUTHORIZED_KEY__|${SSH_KEY_STRING}|" \
+      -e "s|__SYSTEM_DISK_MATCH__|${SYSTEM_DISK_MATCH}|" \
+      -e "s|__DATASTORE_DISK_MATCH__|${DATASTORE_DISK_MATCH}|" \
       -e "s|__SYSTEM_PARTITION_SIZE__|${SYSTEM_PARTITION_SIZE}|g" \
       -e "s|__DATASTORE_FILESYSTEM__|${DEFAULT_DATASTORE_FILESYSTEM}|g" \
       -e "s|__DATASTORE_LABEL__|${DEFAULT_DATASTORE_LABEL}|g" \

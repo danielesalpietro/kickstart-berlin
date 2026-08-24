@@ -1,12 +1,38 @@
     # Topologia "single": un solo disco fisico. Sistema (EFI + root) e
     # Datastore Grastorp condividono lo stesso disco: __SYSTEM_PARTITION_SIZE__
     # per il root, il resto del disco al Datastore.
+    #
+    # "match" e' un allowlist per path in stile YAML flow (Autoinstall
+    # configuration reference, sezione "Disk selection extensions": il
+    # match spec "path" supporta il globbing; da Subiquity 24.08.1 il
+    # campo "match" accetta anche una lista, provata in ordine finche'
+    # una voce non trova un disco libero) invece del precedente
+    # "match: {}" ("un disco arbitrario qualsiasi"). "match: {}" su
+    # hardware con moduli Intel Optane Persistent Memory ha selezionato
+    # un modulo PMem (/dev/pmem0, enumerato prima del disco reale
+    # /dev/sda dall'ordine di probing del kernel) invece del disco vero
+    # — mai emerso nei collaudi precedenti (VM Azure/Hyper-V/QEMU,
+    # nessun Optane) prima del primo boot reale sulla Z8. Vedi Problema
+    # 1 in logbook_first_boot.md.
+    #
+    # __SYSTEM_DISK_MATCH__: placeholder sostituito da scripts/build-iso.sh.
+    # Default (nessun --disk-serial passato a build-iso.sh): allowlist
+    # generico per path dei dischi "veri" (NVMe, SATA/SCSI, virtio) -
+    # "/dev/pmem*" non compare mai, quindi non puo' mai essere scelto
+    # per costruzione. NON basta pero' su un nodo con PIU' dischi reali
+    # candidabili (es. altri dischi con OS/dati preesistenti collegati,
+    # scoperto sulla Z8 - vedi logbook_first_boot.md, sezione dischi
+    # Windows): in quel caso build-iso.sh --disk-serial <serial> genera
+    # invece un match per serial number esatto (deterministico,
+    # ignora qualunque altro disco collegato), YAML flow style qui
+    # per restare su una riga sola indipendentemente da quale dei due
+    # casi si applica.
     swap:
       size: 0
     config:
       - type: disk
         id: system-disk
-        match: {}
+        match: __SYSTEM_DISK_MATCH__
         ptable: gpt
         wipe: superblock
 

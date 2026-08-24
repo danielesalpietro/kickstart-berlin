@@ -30,7 +30,7 @@ comportamento atteso, non un problema:
 - Connessione confermata con la chiave privata fornita dall'utente:
   hostname generato `berlin-3eie`, utente `admin`, sudo NOPASSWD attivo.
 
-## 2026-08-23 — Problema 1: storage finito sui moduli PMem, non su sda
+## 2026-08-23 — Problema 1 (corretto nel repo il 2026-08-24): storage finito sui moduli PMem, non su sda
 
 `lsblk` sul nodo mostra root, ESP e Datastore tutti su `/dev/pmem0s*`
 (modulo Intel Optane Persistent Memory, modalità sector/BTT), mentre
@@ -233,17 +233,110 @@ quindi la base corretta**, non il branch feature (stale).
 I tre fix di questa sessione sono stati applicati su un nuovo branch
 `claude/postinstall-firstboot-fixes`, creato da `origin/develop`.
 
+## 2026-08-24 — Ricollegati altri 5 dischi: Windows reale, non solo teoria
+
+Verso la fine della sessione l'utente ha ricollegato fisicamente altri
+dischi che erano scollegati per tutta la sessione fino a quel momento:
+`sdb` (membro RAID1 `isw_raid_member`, montato NTFS "Volume"), `sdc`
+(NTFS "Volume"), `sdd` (ESP + partizione riservata + due NTFS — layout
+classico di un'installazione Windows completa C:+Recovery), `nvme0n1`
+(ESP + NTFS "Volume5GBs"), `nvme1n1` (NTFS). **Cinque dischi con dati
+Windows reali**, mai visti prima in questa sessione.
+
+Questo rende concreto un limite già annotato nel Problema 1: il fix
+originario (`match` con allowlist per path `nvme*n1`/`sd*`/`vd*`,
+committato su `claude/postinstall-firstboot-fixes`/PR #28) esclude i
+moduli PMem ma **non basta più** quando ci sono più dischi "veri"
+candidabili insieme — con path-glob da solo, un reinstall potrebbe
+scegliere un disco Windows a caso invece di quello vuoto destinato al
+sistema.
+
+**Deciso con l'utente**: per il prossimo reinstall, scollegare
+fisicamente i dischi Windows prima (hot-swap, facile) — i moduli PMem
+restano collegati (banchi DDR, non hot-swap, molto più rischioso
+scollegarli). Con solo `sda` (gia' preparato) + PMem presenti,
+l'allowlist generico esistente basta e resta la soluzione primaria.
+
+**Rete di sicurezza aggiuntiva, comunque implementata** (branch
+`claude/fase7-real-host-hardening`, PR #30): `scripts/build-iso.sh`
+ora accetta `--disk-serial <serial>` (e `--datastore-disk-serial
+<serial>` per la sola topologia dual) per pinnare il disco esatto per
+numero seriale invece dell'allowlist generico — deterministico,
+ignora qualunque altro disco collegato. `iso/storage-single-disk.yaml`
+e `iso/storage-dual-disk.yaml` usano ora placeholder
+`__SYSTEM_DISK_MATCH__`/`__DATASTORE_DISK_MATCH__` (YAML flow-style) al
+posto del match hardcoded, sostituiti da `build-iso.sh` in base a se il
+flag è stato passato. Validato con `scripts/validate-autoinstall.py`
+(sul nodo remoto, nessun Python locale disponibile) sia il caso
+default sia con serial. **Non ancora testato con un boot reale.**
+
+## 2026-08-24 — Strumenti di sviluppo installati sul nodo (dev-only)
+
+Su richiesta esplicita dell'utente, installati sul nodo (`berlin-3eie`)
+tre strumenti di sviluppo — **non fanno parte delle 14 fasi né di
+`setup.sh`/`main()`**, stessa disciplina già documentata in
+`setup.docx` per "Claude Code CLI sul nodo": da rimuovere prima che il
+nodo passi in produzione definitiva.
+
+- **GitHub CLI** (`gh 2.98.0`): installato via repository APT ufficiale
+  di `cli.github.com` (chiave GPG dedicata, non `apt-key` deprecato).
+- **Claude Code CLI** (`2.1.241`): installer nativo
+  (`curl -fsSL https://claude.ai/install.sh | bash`), autenticato
+  dall'utente via login OAuth interattivo (richiesto un terminale SSH
+  interattivo vero, stesso motivo del wizard Vast.ai — non completabile
+  da una sessione headless). Verificato funzionante con
+  `claude -p "..."` non interattivo dopo il login.
+- **GitHub Actions self-hosted runner** (`v2.336.0`, agent id 21,
+  label `self-hosted,z8,gpu`), installato come servizio systemd
+  persistente (`svc.sh install && svc.sh start`, gira come utente
+  `admin` non root). **Considerazione di sicurezza sollevata prima di
+  procedere**: il repo `danielesalpietro/kickstart-berlin` è
+  **pubblico** — un self-hosted runner su repo pubblico è un rischio
+  noto (PR da fork potrebbero eseguire codice arbitrario sul runner),
+  aggravato qui dal fatto che il runner gira sulla stessa macchina
+  fisica usata anche come host Vast.ai in affitto a terzi. L'utente ha
+  modificato le impostazioni di sicurezza del repo (approvazione
+  richiesta per workflow da collaboratori esterni) prima di procedere.
+  Verificato che **nessun workflow esistente usa `runs-on:
+  self-hosted`** al momento: il runner resta registrato ma inerte
+  finché non viene deliberatamente agganciato a un job.
+  - Nota tecnica: il comando `./config.sh` (contiene il token di
+    registrazione GitHub in chiaro come argomento) è stato bloccato dal
+    classificatore di sicurezza di Claude Code quando tentato via SSH
+    da questa sessione — eseguito invece dall'utente nel proprio
+    terminale, stesso pattern già usato per il comando daemon Vast.ai e
+    l'API key.
+
+## Stato a fine sessione (2026-08-24)
+
+- Macchina (`berlin-3eie`, ID 148447) messa **in manutenzione per 48h**
+  su Vast.ai, su richiesta dell'utente — sessione sospesa qui.
+- Tre PR aperte sul repo: [#28](https://github.com/danielesalpietro/kickstart-berlin/pull/28)
+  (mergiata: fix Fase 4/10), [#29](https://github.com/danielesalpietro/kickstart-berlin/pull/29)
+  (aperta: console status issue #27), [#30](https://github.com/danielesalpietro/kickstart-berlin/pull/30)
+  (aperta: fix storage PMem + `--disk-serial`, automazione fix
+  installer Vast.ai, self-test Fase 11 completo).
+- Self-test Fase 11 bloccato su un probabile blocco anti-self-rent
+  lato Vast.ai (non risolvibile da questo repo) — vedi
+  `logbook-fase11.md` per il dettaglio completo dell'indagine.
+
 ## Prossimi passi
 
 - [x] Riconciliare il branch — vedi sezione sopra.
 - [x] Portare nel repo i tre fix (Problema 2, 3, 4) — applicati su
       `claude/postinstall-firstboot-fixes` e verificati end-to-end sul
       nodo reale.
-- [ ] Decidere se/come rendere deterministica la selezione disco
-      (`match: {}`) rispetto ai moduli PMem — Problema 1, non ancora
-      corretto nel repo (decisione operativa presa: tenere l'accoppiata
-      attuale su questo nodo specifico, ma il bug di portabilità resta).
+- [x] Decidere se/come rendere deterministica la selezione disco
+      rispetto ai moduli PMem — Problema 1, **corretto** (allowlist per
+      path) e rafforzato con `--disk-serial` opzionale per il caso
+      multi-disco scoperto sopra.
 - [ ] Valutare se riportare anche `docs/setup.md`/`docs/setup.docx` in
       `develop` (mai fusi dopo la PR #23).
-- [ ] Continuare la procedura da Step 4 di `setup.docx` in poi (Fase 7
-      daemon reale, listing, self-test) — ora con lo script corretto.
+- [ ] Mergiare PR #29 e #30 quando approvate.
+- [ ] Prossimo reinstall da zero: dischi Windows scollegati fisicamente
+      prima, PMem lasciato collegato — verificare che il fix Problema 1
+      funzioni davvero su un boot reale (non ancora testato).
+- [ ] Rimuovere gli strumenti dev-only (gh, claude, actions runner)
+      prima che il nodo passi in produzione definitiva.
+- [ ] Capire con supporto Vast.ai come sbloccare il self-test (Fase 11,
+      vedi `logbook-fase11.md`).
