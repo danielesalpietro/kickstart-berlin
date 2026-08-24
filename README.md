@@ -359,26 +359,40 @@ richiesta esplicita, non ancora implementata.)*
   blocco già annotato in `logbook-fase7.md`). Dettaglio in
   [`logbook-fase11.md`](logbook-fase11.md).
 
-## Console status su tty1 (issue #27)
+## Console status su tty1 + banner SSH (issue #27)
 
 *(Non una delle 14 fasi mappate da Vast.ai — Vast.ai non ha un
 equivalente: aggiunta originale, ispirata alla DCUI di VMware ESXi.)*
 
-- `postinstall/console-status.sh` + `postinstall/kickstart-berlin-console-status.service`,
-  installati e abilitati da `console_status_setup()` in
-  `postinstall/setup.sh` (automatica, nessun segreto coinvolto — stesso
-  criterio di Fase 10). Rimpiazza il prompt di login su tty1 (comunque
-  inutilizzabile: nessuna password valida per design) con una schermata
-  di sola lettura, refresh ogni 30s: hostname, versione Ubuntu/kernel,
-  IP delle interfacce reali (esclusi `lo`/`docker0`/bridge Docker),
-  stato Datastore (montato/spazio libero), driver/GPU NVIDIA, comando
-  SSH pronto da copiare.
+- `postinstall/lib-node-status.sh` (libreria condivisa) +
+  `postinstall/console-status.sh` + `postinstall/motd-vastai-status` +
+  `postinstall/kickstart-berlin-console-status.service`, installati e
+  abilitati da `console_status_setup()` in `postinstall/setup.sh`
+  (automatica, nessun segreto coinvolto — stesso criterio di Fase 10).
+  Due presentazioni della stessa informazione:
+  - **tty1**: rimpiazza il prompt di login (comunque inutilizzabile:
+    nessuna password valida per design) con una schermata di sola
+    lettura, refresh ogni 30s.
+  - **Banner SSH al login**: le stesse informazioni, installate come
+    `/etc/update-motd.d/50-kickstart-berlin` (eseguito da Ubuntu ad
+    ogni login SSH via `pam_motd`, integrato col MOTD standard).
+  - Contenuto: hostname, versione Ubuntu/kernel, IP delle interfacce
+    reali (esclusi `lo`/`docker0`/bridge Docker), stato Datastore
+    (montato/spazio libero), driver/GPU NVIDIA, comando SSH pronto da
+    copiare — più, solo sui nodi dove Fase 7 è stata eseguita: stato
+    dei servizi systemd del daemon Vast.ai e un riepilogo della
+    macchina lato Vast.ai (affidabilità, verifica, listing/prezzo,
+    manutenzione attiva), che replica le informazioni chiave del
+    portale `cloud.vast.ai/host/machines`.
 - **Nessun accesso locale in più**: `StandardInput=null` nella unit
-  systemd, nessun input gestito dallo script. La shell classica resta
-  disponibile sui terminali secondari (Alt+F2 … Alt+F6, non toccati).
+  systemd (variante tty1), nessun input gestito dagli script. La shell
+  classica resta disponibile sui terminali secondari (Alt+F2 … Alt+F6,
+  non toccati).
 - Verificato end-to-end su hardware reale (Z8): dump del framebuffer
-  della console (`/dev/vcs1`/`/dev/vcsu1`) usato per confermare il
-  contenuto renderizzato senza bisogno di una foto dello schermo fisico.
+  della console (`/dev/vcs1`/`/dev/vcsu1`) per la variante tty1 senza
+  bisogno di una foto dello schermo fisico, `run-parts
+  /etc/update-motd.d/` (lo stesso meccanismo usato dal sistema al
+  login) per la variante banner SSH.
 
 ## Riferimenti
 

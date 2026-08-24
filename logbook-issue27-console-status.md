@@ -97,13 +97,85 @@ a 30s per ora, nessuna urgenza di ottimizzare oltre.
 Ridistribuito e riverificato dopo entrambi i fix: output corretto
 (niente `docker0`, trattini ASCII visibili, refresh 30s).
 
+## 2026-08-24 — Estensione: servizi/stato Vast.ai + banner SSH al login
+
+Su richiesta dell'utente, due estensioni:
+
+1. **Stato Vast.ai nella schermata**: sezione aggiuntiva (mostrata solo
+   se `/var/lib/vastai_kaalia` esiste, cioè solo sui nodi dove Fase 7 è
+   stata eseguita — omessa del tutto altrove, non solo vuota) con stato
+   dei servizi systemd del daemon (`vastai.service`,
+   `vast_metrics.service`, locale, nessuna rete) e un riepilogo della
+   macchina lato Vast.ai (affidabilità, verifica, listing/prezzo,
+   manutenzione attiva) che replica le informazioni chiave del portale
+   `cloud.vast.ai/host/machines` — questa parte richiede la CLI
+   `vastai` autenticata (Fase 10) e rete, con `timeout 5` per non far
+   dipendere il refresh dell'intera schermata dalla latenza di rete.
+2. **Banner SSH al login**: le stesse informazioni, mostrate anche alla
+   connessione SSH (non solo su tty1) — "le stesse informazioni le
+   riporterei come banner alla prima connessione via ssh, può tornare
+   utile". Refactoring: la logica di raccolta condivisa è stata estratta
+   in `postinstall/lib-node-status.sh` (sorgentato sia da
+   `console-status.sh` sia dal nuovo `postinstall/motd-vastai-status`,
+   installato come `/etc/update-motd.d/50-kickstart-berlin` — Ubuntu
+   esegue ogni script lì dentro ad ogni login SSH via `pam_motd`).
+
+### Due bug reali trovati nello stesso giro di collaudo
+
+1. **Sintassi f-string non valida**: `print(f"... {d.get(\"id\", \"?\")} ...")`
+   — un backslash per escapare virgolette **dentro** la parte-espressione
+   di un f-string non è mai valido in Python (nessuna versione, non
+   collegato al rilassamento delle f-string di PEP 701/3.12 come
+   inizialmente sospettato — quello riguarda solo il riuso dello stesso
+   tipo di virgolette, non i backslash). `SyntaxError: unexpected
+   character after line continuation character` al primo test reale.
+   Corretto estraendo `machine_id = d.get("id", "?")` in una variabile
+   separata prima della f-string.
+2. **`/var/lib/vastai_kaalia/machine_id` contiene un hash interno**
+   (64 caratteri esadecimali), non l'ID numerico (`148447`) che
+   `vastai show machine <id>` si aspetta — `vastai show machine <hash>`
+   fallisce silenziosamente (nessun dato). Corretto usando invece
+   `vastai show machines` (senza ID, elenca tutte le macchine
+   dell'account) filtrando per hostname lato Python — più robusto, non
+   dipende dal formato di quel file interno.
+3. **(bug 3, trovato per ultimo) `HOME` non impostata per il servizio
+   systemd**: `kickstart-berlin-console-status.service` gira come root
+   (nessun `User=` nell'unit, per design — vedi commit originale
+   dell'issue), ma l'API key di `vastai` è stata configurata
+   dall'operatore come utente `admin` (unico account del nodo), quindi
+   vive sotto `/home/admin/.config/vastai/`, non `/root/`. Senza
+   `HOME` esplicita, `vastai` come root non trova alcuna
+   autenticazione e la sezione macchina risultava sempre vuota
+   ("dati non disponibili") **anche con l'API key correttamente
+   configurata** — stesso genere di problema già visto in Fase 7,
+   Problema 4 (`vastai` non eseguibile da `admin` senza sudo, causa
+   opposta ma stessa radice: home directory sbagliata). Corretto con
+   `HOME=/home/admin timeout 5 vastai show machines --raw`.
+
+### Verificato end-to-end su hardware reale (Z8, dopo i 3 fix sopra)
+
+- Sezione Vast.ai su tty1: servizi `active`/`active`, macchina
+  `ID 148447  affidabilita 74.1%  unverified  listato: si ($0.15/GPU/h)
+  in uso: 0, MANUTENZIONE attiva (~64h rimanenti)` — quest'ultimo
+  dettaglio (manutenzione) utile di suo, non richiesto esplicitamente
+  ma emerso naturalmente dal JSON di `vastai show machines`.
+- Banner SSH: verificato con `run-parts /etc/update-motd.d/` (lo stesso
+  meccanismo usato realmente dal sistema al login, non un'esecuzione
+  diretta dello script) — integrato correttamente accanto al MOTD
+  standard di Ubuntu (system load, temperatura, uso disco da
+  `50-landscape-sysinfo`). Nota: un `ssh host "comando"` non-interattivo
+  **non** mostra il MOTD per design di SSH/PAM (solo le sessioni di
+  login interattive) — non testabile con lo stesso approccio "one-off"
+  usato altrove in questo repo, da qui la verifica via `run-parts`.
+
 ## Stato
 
-Verificato end-to-end su hardware reale (Z8, RTX 3090). Non ancora
+Verificato end-to-end su hardware reale (Z8, RTX 3090), incluse le due
+modalità (tty1 + banner SSH) e la sezione Vast.ai. Non ancora
 verificato: comportamento dopo un vero riavvio completo del nodo (il
-collaudo qui ha installato/abilitato la unit su un sistema già avviato,
-non tramite un ciclo autoinstall→boot→postinstall completo con questa
-issue inclusa fin dall'ISO) — il meccanismo (`main()` →
+collaudo qui ha installato/abilitato tty1+MOTD a caldo su un sistema
+già avviato, non tramite un ciclo autoinstall→boot→postinstall completo
+con questa issue inclusa fin dall'ISO) — il meccanismo (`main()` →
 `console_status_setup()`, stesso schema di ogni altra fase) non ha
 ragione strutturale per comportarsi diversamente, ma non è lo stesso
 grado di conferma delle Fasi già passate per un boot reale completo.

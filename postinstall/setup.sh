@@ -464,7 +464,7 @@ phase10_vastai_cli() {
 # CLAUDE.md direttiva #6) va installato come systemd unit e abilitato:
 # non basta che esista nella directory.
 console_status_setup() {
-  log "Issue #27: schermata informativa su tty1 ..."
+  log "Issue #27: schermata informativa su tty1 + banner SSH ..."
 
   local unit_src="/opt/kickstart-berlin/kickstart-berlin-console-status.service"
   local unit_dst="/etc/systemd/system/kickstart-berlin-console-status.service"
@@ -483,7 +483,24 @@ console_status_setup() {
 
   systemctl enable --now kickstart-berlin-console-status.service >/dev/null
 
-  log "Issue #27 completata: tty1 mostra la schermata informativa (Alt+F2 ... Alt+F6 per la shell classica)."
+  # Banner SSH al login (estensione richiesta dall'utente: le stesse
+  # informazioni della schermata tty1, ma mostrate anche alla
+  # connessione SSH — sourcing di lib-node-status.sh in comune, vedi
+  # quel file). Ubuntu esegue ogni script eseguibile in
+  # /etc/update-motd.d/ ad ogni login SSH via pam_motd - "50-" segue la
+  # convenzione di ordinamento numerico già in uso lì (es.
+  # "10-help-text" di default).
+  local motd_src="/opt/kickstart-berlin/motd-vastai-status"
+  local motd_dst="/etc/update-motd.d/50-kickstart-berlin"
+  if [[ -f "$motd_src" ]]; then
+    if ! cmp -s "$motd_src" "$motd_dst" 2>/dev/null; then
+      install -m 0755 "$motd_src" "$motd_dst"
+    fi
+  else
+    log "motd-vastai-status non trovato in /opt/kickstart-berlin: banner SSH saltato (ISO più vecchia?)."
+  fi
+
+  log "Issue #27 completata: tty1 e banner SSH mostrano la schermata informativa (Alt+F2 ... Alt+F6 per la shell classica)."
 }
 
 main() {
