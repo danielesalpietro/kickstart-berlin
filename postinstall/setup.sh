@@ -245,6 +245,15 @@ phase5_docker() {
     log "NVIDIA Container Toolkit non presente (host non-GPU o Fase 4 non eseguita): salto la config del runtime."
   fi
 
+  # Senza questo, ogni comando "docker" da admin fallisce con "permission
+  # denied" (serve sudo per ogni comando, anche solo "docker ps") -
+  # scoperto sul primo collaudo reale, admin è l'unico account del nodo
+  # (vedi iso/user-data). usermod -aG è idempotente: rieseguibile senza
+  # effetti collaterali se admin è già nel gruppo.
+  if id admin >/dev/null 2>&1; then
+    usermod -aG docker admin
+  fi
+
   log "Fase 5 completata."
 }
 
