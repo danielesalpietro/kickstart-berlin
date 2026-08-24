@@ -400,6 +400,57 @@ equivalente: aggiunta originale, ispirata alla DCUI di VMware ESXi.)*
   /etc/update-motd.d/` (lo stesso meccanismo usato dal sistema al
   login) per la variante banner SSH.
 
+## Node management via SSH (issue #33)
+
+*(Non una delle 14 fasi mappate da Vast.ai — aggiunta originale, stesso
+stile DCUI ESXi di issue #27, ma questa **modifica** lo stato del nodo
+invece di solo mostrarlo.)*
+
+- `postinstall/node-manage.py`: menu ad albero interattivo (Su/Giù/
+  Invio/Esc/Q), va lanciato **a mano** dall'operatore via SSH
+  interattivo (`sudo /opt/kickstart-berlin/node-manage.py`) — **mai**
+  in `setup.sh`/`main()`, stesso motivo di Fase 7/11: richiede una TTY
+  reale (`netplan try`, i pager dei log) e può modificare stato reale
+  del sistema, non solo mostrarlo.
+- **Non è un nuovo vettore di accesso**: precisazione esplicita
+  dell'utente su issue #33 — l'operatore ha già pieno accesso via
+  SSH+sudo, questo è solo un'interfaccia più comoda sopra un accesso
+  che ha già per intero. Il rischio gestito è "azioni distruttive rese
+  troppo facili da un menu": ogni azione che cambia stato reale mostra
+  prima la situazione attuale (`lib-node-status.sh`, stesso principio
+  di issue #27) e chiede conferma esplicita (default "no").
+- Tre sezioni:
+  - **Management Network**: stato rete; IP Configuration (DHCP o
+    statico "su tutto lo stack IP" — indirizzo/CIDR, gateway, DNS,
+    validati con il modulo `ipaddress` di Python prima di scrivere
+    qualunque file); riavvio servizi di rete; test di connettività.
+    Lo statico scrive un file di override dedicato
+    (`/etc/netplan/90-kickstart-berlin-override.yaml`, mai il file
+    generato da Subiquity all'install) e applica con **`netplan try
+    --timeout 30`** — meccanismo nativo di Netplan pensato apposta per
+    questo: ripristina automaticamente la configurazione precedente se
+    non confermata entro il timeout, evita di reinventare un rollback
+    a mano per un'azione che potrebbe altrimenti bloccare fuori
+    dall'unico accesso al nodo (SSH).
+  - **POD**: stato/riavvio dei servizi Vast.ai (con stato mostrato
+    prima e dopo); diagnostica come wrapper sulla CLI `vastai` reale
+    (`show machine`, `list machine --price_gpu ...`, `unlist machine`,
+    self-test — quest'ultimo riusa `vastai-self-test.sh`, Fase 11,
+    invece di duplicarne la logica), sempre con `HOME=/home/admin`
+    esplicito (stesso fix di issue #27: l'API key vive lì, non sotto
+    root).
+  - **View System Log**: log del postinstall (`journalctl -u
+    kickstart-berlin-postinstall.service`), log del daemon POD
+    (`/var/lib/vastai_kaalia/*.log` via `less`), log di sistema
+    (`journalctl -xe`) — pager reali, non reimplementati dentro curses.
+- Interfaccia in **inglese** (convenzione esplicita dell'utente per le
+  interfacce di admin di questo repo, a differenza dei commenti nel
+  codice e della documentazione, in italiano).
+- Ogni azione sospende curses e gira come terminale normale
+  (`print`/`input`), invece che dentro una finestra curses: più
+  semplice/robusto per output di lunghezza non prevedibile, e
+  necessario comunque per `netplan try` e i pager.
+
 ## Riferimenti
 
 - [Grastorp](https://github.com/danielesalpietro/grastorp) — repo di

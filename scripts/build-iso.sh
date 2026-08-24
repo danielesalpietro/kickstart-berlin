@@ -401,6 +401,10 @@ cp "${REPO_ROOT}/postinstall/kickstart-berlin-postinstall.service" "${POSTINSTAL
 # automatica di setup.sh (vedi commenti in ciascun file).
 cp "${REPO_ROOT}/postinstall/install-vastai-host.sh" "${POSTINSTALL_STAGE}/"
 cp "${REPO_ROOT}/postinstall/vastai-self-test.sh" "${POSTINSTALL_STAGE}/"
+# node-manage.py (issue #33): stesso principio, nessun placeholder, mai
+# in setup.sh - menu interattivo di gestione via SSH, sospende curses per
+# ogni azione (netplan try, vastai, journalctl/less), va invocato a mano.
+cp "${REPO_ROOT}/postinstall/node-manage.py" "${POSTINSTALL_STAGE}/"
 # lib-node-status.sh (issue #27): libreria condivisa fra console-status.py
 # (tty1, curses) e motd-vastai-status (banner SSH al login, testo
 # semplice) - stessi placeholder Datastore di setup.sh (stessa
