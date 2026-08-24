@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+#
+# motd-vastai-status — banner di stato del nodo alla connessione SSH
+# (issue #27, estensione richiesta dall'utente: "le stesse informazioni
+# le riporterei come banner alla prima connessione via ssh"). Stesse
+# informazioni di console-status.sh (tty1), stesse funzioni condivise
+# via lib-node-status.sh — qui una singola stampa, non un loop: Ubuntu
+# rilancia gli script in /etc/update-motd.d/ ad ogni login SSH tramite
+# pam_motd, non serve un refresh interno.
+#
+# Installato come /etc/update-motd.d/50-kickstart-berlin da
+# console_status_setup() in postinstall/setup.sh (stessa funzione che
+# installa anche la schermata tty1 — un solo punto d'ingresso per
+# entrambe le modalità dell'issue #27). Il prefisso numerico "50" segue
+# la convenzione standard di update-motd.d (ordine di esecuzione),
+# dopo "10-help-text" e prima di eventuali script successivi.
+set -uo pipefail
+
+# Path fisso, non relativo allo script: questo file viene installato in
+# /etc/update-motd.d/, la libreria resta invece in /opt/kickstart-berlin
+# (dove console_status_setup() la lascia insieme a console-status.sh).
+LIB_PATH="/opt/kickstart-berlin/lib-node-status.sh"
+[[ -r "$LIB_PATH" ]] || exit 0
+# shellcheck source=lib-node-status.sh
+source "$LIB_PATH"
+
+hostname_now="$(hostname)"
+
+cat <<EOF
+
+kickstart-berlin - ${hostname_now}
+  $(_os_line)
+
+  Indirizzi IP:
+$(_ip_lines)
+  Datastore:
+$(_datastore_line)
+  GPU:
+$(_gpu_line)
+EOF
+
+if _vastai_installed; then
+  cat <<EOF
+  Servizi Vast.ai:
+$(_vastai_services_line)
+  Macchina Vast.ai:
+$(_vastai_machine_line)
+EOF
+fi
+echo
