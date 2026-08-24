@@ -256,6 +256,112 @@ scriva sulla console fisica (vedi anche issue #27): `sudo cat
 Unicode-aware) dumpano il contenuto reale dello schermo del tty
 indicato.
 
+## 2026-08-24 — Fix live sulla Z8 reale: Docker Root Dir era sul loop-file di root (Bug 3), non sul Datastore
+
+Durante una domanda dell'utente ("Docker Root Dir dove gira? è conforme
+col setup originale di vast.ai o l'abbiamo modificato noi dopo?"),
+ispezione live del nodo (`docker info`, `mount`, `blkid`, `/etc/fstab`)
+ha rivelato che **Bug 3** (il file XFS loop-mounted che lo step
+"Storage" del wizard Vast.ai piazza sulla partizione di root — già
+documentato sopra come "non automatizzabile, problema noto, non
+gestito") era ancora presente e attivo su questo nodo, con conseguenze
+più serie del previsto:
+
+- `/var/lib/docker` era una directory reale con `/var/lib/docker-loop.xfs`
+  (81.3GB, 33G occupati) montato sopra via una riga in `/etc/fstab`
+  (`loop,rw,auto,pquota`) — **non** il symlink verso il Datastore che
+  `phase3_docker_storage()` dovrebbe garantire.
+- **Scoperta più importante**: `daemon.json` in realtà indicava
+  correttamente `data-root: /grastorp/volumes/.../docker` (il Datastore
+  — probabilmente scritto dal postflight di `install-vastai-host.sh`,
+  che forza sempre `data-root` sul Datastore indipendentemente dal
+  merge) e `docker info` confermava quel path come "Docker Root Dir"
+  reale. Ma quella directory conteneva solo 241K — nessun `overlay2`,
+  nessun dato reale — mentre `docker images` mostrava comunque 6
+  immagini reali (pytorch, vastai/test:*, ecc.) per un totale di ~33G.
+  **Causa**: `/etc/containerd/config.toml` ha `root =
+  "/var/lib/docker/containerd/"` **hardcoded**, mai toccato né da
+  `phase3_docker_storage()` né da `install-vastai-host.sh` — è lì che
+  containerd (il vero motore che scarica e tiene i layer immagine,
+  invocato da `dockerd` via `--containerd=/run/containerd/containerd.sock`)
+  teneva il grosso dei dati, sul loop-file di root, **indipendentemente**
+  da dove puntava `data-root` di Docker. La configurazione
+  dell'architettura Datastore-symlink di Fase 2/3, in pratica, non
+  stava redirigendo la maggior parte dello spazio disco usato da Docker
+  — solo i metadati propri di `dockerd` (piccoli). Aperta issue #41 per
+  estendere l'automazione a containerd (vedi sotto).
+
+### Fix live eseguito (su richiesta esplicita dell'utente, non nel repo)
+
+Migrazione manuale via SSH, **verso il disco WDC** (`/dev/sda1`,
+465.8G, XFS già formattato, completamente libero — confermato prima di
+scrivere: i "9G usati" iniziali mostrati da `df` erano solo overhead
+XFS, non dati preesistenti) invece che verso il Datastore esistente su
+PMem (scelta esplicita dell'utente, via AskUserQuestion: vuole Docker
+fuori dalla PMem, non solo fuori da root):
+
+1. Montato `/dev/sda1` su `/mnt/wdc-docker` (riga persistente in
+   `/etc/fstab` per UUID).
+2. Fermati `docker` e `containerd`.
+3. Copiati sia `/var/lib/docker/containerd` (i dati reali, 33G) sia il
+   contenuto del Datastore `.../docker/` (i metadati Docker, 241K) in
+   `/mnt/wdc-docker/docker/`.
+4. Aggiornati `data-root` in `daemon.json` e `root` in
+   `containerd/config.toml`, entrambi su `/mnt/wdc-docker/docker`
+   (backup `.bak-<timestamp>` di entrambi i file lasciati sul posto).
+5. Smontato il loop-file, riga fstab commentata, `/var/lib/docker`
+   ricreato come symlink verso `/mnt/wdc-docker/docker` (stessa
+   convenzione del repo).
+6. Riavviati `containerd` poi `docker`. Verificato: `docker info` →
+   root dir corretto, tutte le 6 immagini presenti, `vastai.service`/
+   `vast_metrics.service` mai interrotti.
+7. **Prima di cancellare il vecchio loop-file** (82G, su richiesta
+   esplicita dell'utente "solo se siamo sicuri che la copia sia
+   sicura"): rimontato in sola lettura su un mountpoint separato,
+   `diff -rq` fra vecchio e nuovo `containerd/` — nessun file "Only in
+   old" (nulla mancante), le uniche differenze reali erano i due
+   database attivi di containerd (`meta.db`,
+   `snapshotter.../metadata.db`, entrambi scritti dal daemon da quando
+   è ripartito — atteso), conteggio file 116430 (vecchio) vs 116438
+   (nuovo, +8 attività normale post-riavvio). Cancellato solo dopo
+   questa verifica positiva. Root passato dal 44% (41G) al 9% (7.8G) —
+   82G liberati sulla PMem.
+
+### Effetto collaterale scoperto: la dashboard Vast.ai mostrava PMem etichettata come "Western WDC"
+
+L'utente ha notato sulla console Vast.ai un disco "Western WDC" a
+"2268 MB/s" — impossibile per un WD5000AAKS SATA 7200RPM reale (~150
+MB/s). Confermato in `kaalia.log`: le righe periodiche
+`update_image_cache() diskspace:81.3GB` combaciano esattamente con la
+dimensione del vecchio loop-file (allora su PMem), e `send_mach_info.log`
+mostra che il daemon lancia `fio` per il benchmark di banda inviato a
+Vast.ai — quindi il benchmark misurava l'I/O di dove Docker teneva
+davvero i dati (PMem, via il loop-file), ma la dashboard lo etichettava
+col nome del modello disco "Western WDC" in modo fuorviante (probabile
+mismatch fra il device realmente bendato e il device il cui nome
+modello viene riportato, legato proprio al nostro setup non standard
+con root su PMem). Da riverificare dopo il prossimo benchmark
+automatico di Kaalia: atteso un valore molto più basso (~100-150 MB/s,
+coerente con lo specifico reale del WDC) ora che Docker vive
+genuinamente lì.
+
+### Non ancora fatto
+
+- Non toccati né `nvme0n1` (MZ1L2960HCJR, ancora NTFS/Windows) né
+  `nvme1n1` (altro NVMe, ancora NTFS/Windows) — esplicitamente esclusi
+  dalla richiesta dell'utente in questo fix live.
+- Questo fix è **manuale, non nel repo**: un futuro reinstall da zero
+  di questo nodo (già pianificato, vedi CLAUDE.md) userà comunque
+  `--disk-serial`/`--datastore-disk-serial` per pinnare correttamente i
+  ruoli dei dischi fin dall'inizio — il fix live qui sopra è
+  un'interim fix per lo stato attuale, non un sostituto di
+  quell'automazione.
+- Issue #41 aperta per estendere `phase3_docker_storage()`/
+  `install-vastai-host.sh` a gestire anche `/etc/containerd/config.toml`
+  per i futuri install — senza quel fix, qualunque nuovo nodo avrebbe
+  lo stesso problema (Datastore-symlink che redirige solo i metadati
+  Docker, non i dati reali).
+
 ## Prossimi passi
 
 - [x] Verificare i percorsi sintetici (validazione argomenti,
