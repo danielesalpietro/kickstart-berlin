@@ -397,6 +397,25 @@ come host GPU generico, non come nodo EMH-2 specifico — resta un'area
 di lavoro esterna a kickstart-berlin, coordinarsi con l'altra
 sessione/progetto per i passi successivi).
 
+## 2026-08-24 (continua) — fix #34 (admin nel gruppo docker) applicato live, non solo nel repo
+
+Il fix di `phase5_docker()` (PR #38, issue #34: `usermod -aG docker
+admin`) corregge solo le **future** installazioni via `setup.sh` — non
+si applica retroattivamente a un nodo già installato, come confermato
+dall'utente con una sessione SSH del tutto nuova (`id admin` non
+elencava `docker`, non un problema di cache di gruppo della sessione
+corrente). Applicato lo stesso fix live sulla Z8:
+
+```
+sudo usermod -aG docker admin
+```
+
+Verificato da una sessione SSH nuova (necessario: l'appartenenza a un
+gruppo si aggiorna solo al login successivo, non nella sessione già
+attiva) — `id admin` ora include `988(docker)`, `docker ps` funziona
+senza `sudo`. Il gruppo `docker` (gid 988) prima conteneva solo
+`vastai_kaalia`, confermando il bug.
+
 ## Prossimi passi
 
 - [x] Riconciliare il branch — vedi sezione sopra.
