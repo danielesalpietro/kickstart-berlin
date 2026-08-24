@@ -12,7 +12,7 @@
     # l'installazione invece di procedere in modo scorretto (fail-fast
     # intenzionale: usare la topologia "single" in quel caso).
     #
-    # "match" e' una lista ordinata di allowlist per path (path supporta
+    # "match" e' un allowlist per path in stile YAML flow (path supporta
     # il globbing, "match" come lista e' supportato da Subiquity
     # 24.08.1, provata in ordine finche' una voce non trova un disco
     # libero) invece di un dict semplice ("match: {size: smallest}" /
@@ -22,23 +22,28 @@
     # kernel) invece di un disco vero. Mai emerso nei collaudi precedenti
     # (VM senza Optane) prima del primo boot reale sulla Z8, stesso
     # problema di storage-single-disk.yaml — vedi Problema 1 in
-    # logbook_first_boot.md. Limite noto: se il sistema avesse dischi
-    # "veri" di bus diversi mescolati (es. un NVMe e un SATA) insieme,
-    # "size: smallest" verrebbe applicato solo all'interno del primo bus
-    # che matcha almeno un disco, non all'insieme di tutti - non un
-    # problema per l'hardware target attuale (bus omogeneo).
+    # logbook_first_boot.md. Limite noto dell'allowlist generica: se il
+    # sistema avesse dischi "veri" di bus diversi mescolati (es. un NVMe
+    # e un SATA) insieme, "size: smallest" verrebbe applicato solo
+    # all'interno del primo bus che matcha almeno un disco, non
+    # all'insieme di tutti - non un problema per l'hardware target
+    # attuale (bus omogeneo).
+    #
+    # __SYSTEM_DISK_MATCH__ / __DATASTORE_DISK_MATCH__: placeholder
+    # sostituiti da scripts/build-iso.sh. Default: l'allowlist generico
+    # sopra. Su un nodo con PIU' dischi reali candidabili (es. altri
+    # dischi con OS/dati preesistenti collegati, scoperto sulla Z8 —
+    # vedi logbook_first_boot.md, sezione dischi Windows) l'allowlist
+    # generico NON basta: build-iso.sh --disk-serial <serial>
+    # --datastore-disk-serial <serial> genera invece un match per serial
+    # number esatto per ciascun disco (deterministico, ignora qualunque
+    # altro disco collegato).
     swap:
       size: 0
     config:
       - type: disk
         id: system-disk
-        match:
-          - path: /dev/nvme*n1
-            size: smallest
-          - path: /dev/sd*
-            size: smallest
-          - path: /dev/vd*
-            size: smallest
+        match: __SYSTEM_DISK_MATCH__
         ptable: gpt
         wipe: superblock
 
@@ -83,10 +88,7 @@
 
       - type: disk
         id: datastore-disk
-        match:
-          - path: /dev/nvme*n1
-          - path: /dev/sd*
-          - path: /dev/vd*
+        match: __DATASTORE_DISK_MATCH__
         ptable: gpt
         wipe: superblock
 
