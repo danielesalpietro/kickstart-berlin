@@ -243,10 +243,89 @@ con questa issue inclusa fin dall'ISO) — il meccanismo (`main()` →
 ragione strutturale per comportarsi diversamente, ma non è lo stesso
 grado di conferma delle Fasi già passate per un boot reale completo.
 
+## 2026-08-24 — Restyling box + spaziatura, nuovi campi, bug CRLF serio
+
+Feedback dell'utente dopo aver visto il primo screenshot reale: "funzionale, ma
+esteticamente migliorabile" — spaziatura tra le sezioni e un riquadro
+bordato (come nel mockup originale) invece di testo libero su sfondo
+nero pieno.
+
+**Riquadro bordato**: `curses.newwin()` + `.box()` centrato, titolo
+"Stato del nodo" incorporato nel bordo superiore, dimensionato sul
+contenuto reale (`max_content_w`, `len(content_lines)`) entro i limiti
+dello schermo — non fisso. **Bug trovato al primo collaudo**: larghezza
+massima iniziale (96 colonne) troncava a metà parola la riga più lunga
+in pratica ("Macchina Vast.ai", ~120 caratteri con affidabilità +
+verifica + listing + manutenzione tutti sulla stessa riga). Corretto
+alzando il limite a 132 **e** aggiungendo un'ellissi esplicita (`...`
+ASCII, non `…` Unicode — stesso motivo dell'em-dash altrove in questo
+repo, la console reale non renderizza glifi fuori font) per rendere
+visibile un eventuale troncamento residuo invece di tagliare in
+silenzio.
+
+**Nuovi campi**, richiesti esplicitamente dall'utente: gateway di
+default, DNS, modello CPU + carico in percentuale (`load1/core_count`,
+non il load average grezzo), disco di sistema (`/`) **separato** dal
+Datastore/Docker — con la distinzione di gravità richiesta
+esplicitamente ("se finisce il disco Docker: niente più container: se
+finisce il disco di sistema: si blocca tutto"). Aggiunta una soglia di
+avviso condivisa (`DISK_WARN_PCENT=90`) su entrambi i dischi, testo
+ASCII semplice ("ATTENZIONE: ...", nessun simbolo/emoji, stesso motivo
+di sopra). Tutte le nuove funzioni in `lib-node-status.sh` (condivise
+tra tty1 e banner SSH, come il resto): `_gateway_line`, `_dns_line`
+(prova `resolvectl dns` prima, fallback su `/etc/resolv.conf`),
+`_cpu_line`, `_system_disk_line`; `_datastore_line` esistente arricchita
+con % di utilizzo e lo stesso avviso.
+
+### Bug serio trovato durante il collaudo: CRLF su un file senza estensione
+
+`motd-vastai-status` (nessuna estensione `.sh`/`.py`) falliva sul nodo
+con `set: pipefail: invalid option name` — **terminatori di riga CRLF**
+(Windows), non un errore di sintassi bash. Causa: `.gitattributes`
+forzava `eol=lf` solo per `*.sh`/`*.py`/`*.yml`/`*.yaml` e due path
+espliciti (`iso/user-data`, `iso/meta-data`) — `motd-vastai-status` non
+rientrava in nessuna di queste regole, quindi su un checkout Windows
+con `core.autocrlf=true` (il caso di questa intera sessione) veniva
+estratto con CRLF. **Non solo un problema di test**: se l'ISO venisse
+mai buildata direttamente da un checkout Windows (come in questa
+sessione) invece che da un clone Linux pulito, lo stesso bug
+finirebbe nell'ISO reale.
+
+Corretto aggiungendo regole esplicite per path in `.gitattributes`
+(file senza estensione riconosciuta: `postinstall/motd-vastai-status`,
+`postinstall/kickstart-berlin-postinstall.service`,
+`postinstall/kickstart-berlin-console-status.service`).
+
+**Complicazione trovata nel fix stesso**: `git add --renormalize .`
+aggiorna l'INDICE (cosa verrà committato) ma **non riscrive il file nel
+working tree** — verificato con `file`/`od -c` che il file su disco
+restava CRLF anche dopo. Anche `git checkout -- <path>` (che dovrebbe
+ripristinare il working tree dall'indice) non ha riscritto i byte per
+questo file specifico, nonostante `git check-attr` confermasse
+correttamente `eol: lf` come attributo effettivo — causa esatta non
+isolata (sospetto: git-for-windows considera il file "già aggiornato"
+per un confronto di contenuto che non tiene conto della sola differenza
+di line-ending in questo caso particolare, non riproducibile in modo
+affidabile per capirlo a fondo). **Workaround verificato**: riscrivere
+il file da capo con lo strumento di editing (bypassa interamente la
+pipeline di smudge/clean di git) risolve in modo affidabile — usato per
+sistemare `motd-vastai-status` in questa sessione. Verificato con
+`file`/`od -c` che il risultato sia pulito, poi ritestato con successo
+sul nodo reale via trasferimento diretto (`cat file | ssh ... "cat >
+..."`, bypassando anche `scp` per escluderlo come possibile causa).
+
+**Verificato end-to-end su hardware reale (Z8)**, tutte le modifiche
+sopra insieme: tty1 (dump framebuffer) e banner SSH (`run-parts
+/etc/update-motd.d/`) entrambi mostrano tutti i nuovi campi
+correttamente, nessun troncamento, nessun errore di sintassi.
+
 ## Prossimi passi
 
 - [ ] Collaudo di un boot completo da ISO ricostruita con questa issue
-      inclusa (non solo deploy a caldo su un sistema già installato).
+      inclusa (non solo deploy a caldo su un sistema già installato) —
+      **ora particolarmente rilevante** per confermare che il fix
+      `.gitattributes` funzioni davvero end-to-end in una build reale,
+      non solo verificato a mano file per file in questa sessione.
 - [ ] Valutare se aggiungere alla schermata anche lo stato `ufw`
       (attivo/inattivo, porte aperte) — non incluso nella prima
       versione, l'issue originale non lo richiedeva esplicitamente tra
@@ -255,3 +334,8 @@ grado di conferma delle Fasi già passate per un boot reale completo.
       fisico della console-status.py — non verificabile da questa
       sessione (solo dump testuale via `/dev/vcs1`, niente attributi
       colore).
+- [ ] Capire la causa esatta per cui `git checkout --`/`git add
+      --renormalize` non riscrivevano il working tree per
+      `motd-vastai-status` in questa sessione (git-for-windows +
+      OneDrive?) — non bloccante (workaround affidabile trovato), ma
+      utile saperlo per non ripetere la stessa indagine in futuro.

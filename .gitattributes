@@ -6,3 +6,14 @@
 *.yaml text eol=lf
 iso/user-data text eol=lf
 iso/meta-data text eol=lf
+
+# File senza estensione in postinstall/, eseguiti su Linux ma non
+# coperti dalle regole *.sh/*.py sopra - senza questa riga esplicita,
+# git li estrae con CRLF su un checkout Windows con core.autocrlf
+# attivo, rompendo bash sul nodo target ("set: pipefail: invalid
+# option name", il CR finale letto come parte dell'ultima opzione).
+# Scoperto sul primo collaudo reale di motd-vastai-status (issue #27),
+# vedi logbook-issue27-console-status.md.
+postinstall/motd-vastai-status text eol=lf
+postinstall/kickstart-berlin-postinstall.service text eol=lf
+postinstall/kickstart-berlin-console-status.service text eol=lf

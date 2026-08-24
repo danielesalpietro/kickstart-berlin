@@ -380,13 +380,16 @@ equivalente: aggiunta originale, ispirata alla DCUI di VMware ESXi.)*
     `/etc/update-motd.d/50-kickstart-berlin` (eseguito da Ubuntu ad
     ogni login SSH via `pam_motd`, integrato col MOTD standard).
   - Contenuto: hostname, versione Ubuntu/kernel, IP delle interfacce
-    reali (esclusi `lo`/`docker0`/bridge Docker), stato Datastore
-    (montato/spazio libero), driver/GPU NVIDIA, comando SSH pronto da
-    copiare — più, solo sui nodi dove Fase 7 è stata eseguita: stato
-    dei servizi systemd del daemon Vast.ai e un riepilogo della
-    macchina lato Vast.ai (affidabilità, verifica, listing/prezzo,
-    manutenzione attiva), che replica le informazioni chiave del
-    portale `cloud.vast.ai/host/machines`.
+    reali (esclusi `lo`/`docker0`/bridge Docker), gateway di default,
+    DNS, modello CPU + carico %, disco di sistema (`/`) e Datastore/
+    Docker separati (con avviso esplicito oltre il 90% di utilizzo —
+    riempire il disco di sistema blocca l'intero nodo, riempire il
+    Datastore blocca solo l'avvio di nuovi container), driver/GPU
+    NVIDIA, comando SSH pronto da copiare — più, solo sui nodi dove
+    Fase 7 è stata eseguita: stato dei servizi systemd del daemon
+    Vast.ai e un riepilogo della macchina lato Vast.ai (affidabilità,
+    verifica, listing/prezzo, manutenzione attiva), che replica le
+    informazioni chiave del portale `cloud.vast.ai/host/machines`.
 - **Nessun accesso locale in più**: `StandardInput=null` nella unit
   systemd (variante tty1), nessun input gestito dagli script. La shell
   classica resta disponibile sui terminali secondari (Alt+F2 … Alt+F6,
