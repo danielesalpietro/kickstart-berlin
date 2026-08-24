@@ -45,14 +45,86 @@ _first_ip() {
   '
 }
 
+# Soglia di avviso "disco quasi pieno" condivisa fra Datastore/Docker e
+# disco di sistema sotto - stessa soglia per entrambi, nessun motivo
+# noto per differenziarle. Solo testo ASCII per l'avviso ("ATTENZIONE",
+# non un simbolo/emoji): la console fisica reale non renderizza
+# caratteri fuori font (stessa lezione già imparata con l'em-dash
+# altrove in questo repo).
+DISK_WARN_PCENT=90
+
 _datastore_line() {
   if [[ -L "$DATASTORE_LINK" && -d "$DATASTORE_LINK" ]]; then
-    local total avail
+    local total avail pcent warn=""
     read -r total avail < <(df -h --output=size,avail "$DATASTORE_LINK" 2>/dev/null | tail -n1)
-    echo "    Montato - ${avail:-?} liberi su ${total:-?} (${DATASTORE_LINK})"
+    pcent="$(df --output=pcent "$DATASTORE_LINK" 2>/dev/null | tail -n1 | tr -dc '0-9')"
+    if [[ -n "$pcent" && "$pcent" -ge "$DISK_WARN_PCENT" ]]; then
+      warn=" - ATTENZIONE: spazio quasi esaurito, rischio di non poter avviare nuovi container Docker"
+    fi
+    echo "    Montato - ${avail:-?} liberi su ${total:-?} (${pcent:-?}% usato, ${DATASTORE_LINK})${warn}"
   else
     echo "    Non montato"
   fi
+}
+
+# Disco di root separato dal Datastore: se questo si riempie il nodo si
+# blocca (systemd/journal/apt/ssh hanno tutti bisogno di scrivere su
+# root), non solo Docker - richiesto esplicitamente dall'utente con
+# questa distinzione di gravità.
+_system_disk_line() {
+  local size avail pcent warn=""
+  read -r size avail < <(df -h --output=size,avail / 2>/dev/null | tail -n1)
+  pcent="$(df --output=pcent / 2>/dev/null | tail -n1 | tr -dc '0-9')"
+  if [[ -n "$pcent" && "$pcent" -ge "$DISK_WARN_PCENT" ]]; then
+    warn=" - ATTENZIONE: disco di sistema quasi pieno, rischio di blocco generale del nodo"
+  fi
+  echo "    ${avail:-?} liberi su ${size:-?} (${pcent:-?}% usato)${warn}"
+}
+
+# Gateway di default - utile per diagnosticare problemi di rete dalla
+# console fisica senza dover già avere un altro modo di raggiungere il
+# nodo (che è esattamente il caso in cui questa schermata serve di più).
+_gateway_line() {
+  local gw dev
+  read -r gw dev < <(ip -4 route show default 2>/dev/null | awk '{print $3, $5; exit}')
+  if [[ -n "$gw" ]]; then
+    echo "    ${gw} (via ${dev:-?})"
+  else
+    echo "    Non disponibile"
+  fi
+}
+
+# DNS: prova prima "resolvectl" (systemd-resolved, mostra i server DNS
+# reali a monte) - fallback su /etc/resolv.conf diretto se resolvectl
+# non è disponibile (con systemd-resolved attivo quel file punta spesso
+# solo allo stub locale 127.0.0.53, meno utile, ma è comunque un
+# fallback ragionevole se resolvectl manca del tutto).
+_dns_line() {
+  local dns=""
+  if command -v resolvectl >/dev/null 2>&1; then
+    dns="$(resolvectl dns 2>/dev/null | awk -F': ' 'NF>1{print $2}' | tr -s ' \n' ' ' | sed 's/[[:space:]]*$//')"
+  fi
+  if [[ -z "$dns" && -r /etc/resolv.conf ]]; then
+    dns="$(awk '/^nameserver/{print $2}' /etc/resolv.conf | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+  fi
+  echo "    ${dns:-Non disponibile}"
+}
+
+# CPU: modello + carico come percentuale (richiesto esplicitamente
+# "carico in %", non il load average grezzo) - approssimazione
+# standard load1/core_count*100, non una misura precisa istantanea
+# (richiederebbe due letture di /proc/stat con un intervallo, troppo
+# per una singola riga di stato).
+_cpu_line() {
+  local model load1 cores pct=""
+  model="$(grep -m1 '^model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2 | sed 's/^[[:space:]]*//')"
+  read -r load1 _ < /proc/loadavg 2>/dev/null || load1=""
+  cores="$(nproc 2>/dev/null)"
+  if [[ -n "$load1" && -n "$cores" && "$cores" -gt 0 ]]; then
+    pct="$(awk -v l="$load1" -v c="$cores" 'BEGIN{printf "%.0f", (l/c)*100}')"
+  fi
+  echo "    ${model:-CPU sconosciuta}"
+  echo "    Carico: ${pct:-?}% (load1 ${load1:-?}, ${cores:-?} core)"
 }
 
 _gpu_line() {

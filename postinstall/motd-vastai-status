@@ -33,7 +33,15 @@ kickstart-berlin - ${hostname_now}
 
   Indirizzi IP:
 $(_ip_lines)
-  Datastore:
+  Gateway:
+$(_gateway_line)
+  DNS:
+$(_dns_line)
+  CPU:
+$(_cpu_line)
+  Disco di sistema (/):
+$(_system_disk_line)
+  Datastore / Docker:
 $(_datastore_line)
   GPU:
 $(_gpu_line)

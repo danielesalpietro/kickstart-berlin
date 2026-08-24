@@ -59,20 +59,40 @@ def _vastai_installed():
 def _build_lines():
     """Costruisce il corpo della schermata come lista di stringhe già
     formattate, stesso contenuto della versione bash precedente più la
-    sezione Vast.ai (issue #27, estensione richiesta dall'utente)."""
+    sezione Vast.ai (issue #27, estensione richiesta dall'utente). Una
+    riga vuota TRA ogni sezione (non solo dentro), a differenza della
+    prima versione: leggibilità, su richiesta esplicita dell'utente
+    dopo aver visto il primo collaudo reale ("estensioni corrette, ma
+    esteticamente migliorabile — spaziatura tra le sezioni")."""
     lines = []
     lines.append(_bash_func("_os_line"))
     lines.append("")
     lines.append("Indirizzi IP:")
     lines.extend(_bash_func("_ip_lines").splitlines())
-    lines.append("Datastore:")
+    lines.append("")
+    lines.append("Gateway:")
+    lines.extend(_bash_func("_gateway_line").splitlines())
+    lines.append("")
+    lines.append("DNS:")
+    lines.extend(_bash_func("_dns_line").splitlines())
+    lines.append("")
+    lines.append("CPU:")
+    lines.extend(_bash_func("_cpu_line").splitlines())
+    lines.append("")
+    lines.append("Disco di sistema (/):")
+    lines.extend(_bash_func("_system_disk_line").splitlines())
+    lines.append("")
+    lines.append("Datastore / Docker:")
     lines.extend(_bash_func("_datastore_line").splitlines())
+    lines.append("")
     lines.append("GPU:")
     lines.extend(_bash_func("_gpu_line").splitlines())
 
     if _vastai_installed():
+        lines.append("")
         lines.append("Servizi Vast.ai:")
         lines.extend(_bash_func("_vastai_services_line").splitlines())
+        lines.append("")
         lines.append("Macchina Vast.ai:")
         lines.extend(_bash_func("_vastai_machine_line").splitlines())
 
@@ -96,6 +116,53 @@ def _safe_addstr(win, y, x, text, attr=0):
         pass
 
 
+# 132, non 96: la riga più lunga in pratica ("Macchina Vast.ai", con
+# affidabilità/verifica/listing/manutenzione tutti sulla stessa riga)
+# arriva intorno ai 120 caratteri - un limite più stretto la tronca a
+# metà parola, scoperto sul primo collaudo reale (vedi
+# logbook-issue27-console-status.md).
+BOX_MAX_WIDTH = 132
+
+
+def _draw_box(stdscr, h, w, content_lines):
+    """Riquadro bordato centrato per il corpo, come nel mockup di
+    riferimento dell'utente (curses.newwin + .box()) invece di testo
+    libero su sfondo nero pieno — dimensionato sul contenuto reale
+    (righe/larghezza), non fisso, entro i limiti dello schermo."""
+    max_content_w = max((len(line) for line in content_lines), default=0)
+    box_w = max(20, min(w - 4, max_content_w + 6, BOX_MAX_WIDTH))
+    box_h = max(5, min(h - 5, len(content_lines) + 4))
+    box_y = 2
+    box_x = max(0, (w - box_w) // 2)
+
+    win = curses.newwin(box_h, box_w, box_y, box_x)
+    win.bkgd(" ", curses.color_pair(2))
+    win.box()
+    _safe_addstr(win, 0, 2, " Stato del nodo ", curses.color_pair(2) | curses.A_BOLD)
+
+    inner_h = box_h - 2  # righe utilizzabili tra i due bordi orizzontali
+    inner_w = box_w - 4  # spazio fra i due bordi verticali, con margine
+    truncated = len(content_lines) > inner_h - 1
+    visible = content_lines[: inner_h - 1] if truncated else content_lines
+
+    row = 1
+    for line in visible:
+        # Ellissi ASCII ("...", non "…" Unicode: la console fisica reale
+        # non renderizza caratteri fuori font, stessa lezione già
+        # imparata con l'em-dash altrove in questo repo) se la singola
+        # riga eccede la larghezza disponibile, invece di un
+        # troncamento silenzioso a metà parola (successo con la riga
+        # "Macchina Vast.ai" nel primo collaudo reale).
+        if len(line) > inner_w:
+            line = line[: max(0, inner_w - 3)] + "..."
+        _safe_addstr(win, row, 2, line, curses.color_pair(2))
+        row += 1
+    if truncated:
+        _safe_addstr(win, box_h - 2, 2, "...".ljust(inner_w), curses.color_pair(2))
+
+    win.refresh()
+
+
 def draw(stdscr):
     curses.curs_set(0)
     curses.start_color()
@@ -113,19 +180,14 @@ def draw(stdscr):
         header = f" kickstart-berlin - {hostname} "
         _safe_addstr(stdscr, 0, 0, header.ljust(w), curses.color_pair(1) | curses.A_BOLD)
 
-        row = 2
-        for line in _build_lines():
-            if row >= h - 2:
-                break
-            _safe_addstr(stdscr, row, 2, line, curses.color_pair(2))
-            row += 1
-
         footer_left = " Nessun login locale - solo chiave SSH | shell classica: Alt+F2...Alt+F6 "
         footer_right = f"Aggiornato: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
         footer = footer_left.ljust(max(0, w - len(footer_right))) + footer_right
         _safe_addstr(stdscr, h - 1, 0, footer[:w].ljust(w), curses.color_pair(1) | curses.A_BOLD)
 
         stdscr.refresh()
+        _draw_box(stdscr, h, w, _build_lines())
+
         # Niente stdscr.getch(): il refresh e' un semplice sleep, mai
         # una lettura di input (vedi commento in cima al file).
         time.sleep(REFRESH_INTERVAL_SECONDS)
