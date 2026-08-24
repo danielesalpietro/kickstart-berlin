@@ -414,10 +414,13 @@ phase10_vastai_cli() {
 # alcun segreto né da uno stato che esiste solo dopo un passo manuale —
 # legge solo stato locale già disponibile a questo punto della sequenza).
 #
-# console-status.sh (già copiato in /opt/kickstart-berlin dalle
+# console-status.py (già copiato in /opt/kickstart-berlin dalle
 # late-commands di iso/user-data insieme al resto di postinstall/, vedi
 # CLAUDE.md direttiva #6) va installato come systemd unit e abilitato:
-# non basta che esista nella directory.
+# non basta che esista nella directory. La unit invoca python3
+# esplicitamente (vedi kickstart-berlin-console-status.service): non
+# serve chmod +x qui, "python3 <path>" funziona a prescindere dal bit
+# eseguibile del file.
 console_status_setup() {
   log "Issue #27: schermata informativa su tty1 + banner SSH ..."
 

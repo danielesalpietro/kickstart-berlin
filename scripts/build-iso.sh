@@ -349,19 +349,20 @@ cp "${REPO_ROOT}/postinstall/kickstart-berlin-postinstall.service" "${POSTINSTAL
 # automatica di setup.sh (vedi commenti in ciascun file).
 cp "${REPO_ROOT}/postinstall/install-vastai-host.sh" "${POSTINSTALL_STAGE}/"
 cp "${REPO_ROOT}/postinstall/vastai-self-test.sh" "${POSTINSTALL_STAGE}/"
-# lib-node-status.sh (issue #27): libreria condivisa fra console-status.sh
-# (tty1) e motd-vastai-status (banner SSH al login) - stessi placeholder
-# Datastore di setup.sh (stessa convenzione DATASTORE_LINK).
+# lib-node-status.sh (issue #27): libreria condivisa fra console-status.py
+# (tty1, curses) e motd-vastai-status (banner SSH al login, testo
+# semplice) - stessi placeholder Datastore di setup.sh (stessa
+# convenzione DATASTORE_LINK).
 sed \
     -e "s|__DATASTORE_MOUNT_ROOT__|${DEFAULT_DATASTORE_MOUNT_ROOT}|g" \
     -e "s|__DATASTORE_SYMLINK_NAME__|${DEFAULT_DATASTORE_SYMLINK_NAME}|g" \
     "${REPO_ROOT}/postinstall/lib-node-status.sh" \
   > "${POSTINSTALL_STAGE}/lib-node-status.sh"
-# console-status.sh e motd-vastai-status: nessun placeholder proprio
-# (sourcing di lib-node-status.sh sopra a runtime, non a build-time),
-# automatici via console_status_setup() in setup.sh. Il file .service
-# non ha placeholder, copiato così com'è.
-cp "${REPO_ROOT}/postinstall/console-status.sh" "${POSTINSTALL_STAGE}/"
+# console-status.py e motd-vastai-status: nessun placeholder proprio
+# (sourcing/chiamata di lib-node-status.sh sopra a runtime, non a
+# build-time), automatici via console_status_setup() in setup.sh. Il
+# file .service non ha placeholder, copiato così com'è.
+cp "${REPO_ROOT}/postinstall/console-status.py" "${POSTINSTALL_STAGE}/"
 cp "${REPO_ROOT}/postinstall/motd-vastai-status" "${POSTINSTALL_STAGE}/"
 cp "${REPO_ROOT}/postinstall/kickstart-berlin-console-status.service" "${POSTINSTALL_STAGE}/"
 
