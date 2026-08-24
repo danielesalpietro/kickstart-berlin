@@ -26,18 +26,24 @@
     # sistema avesse dischi "veri" di bus diversi mescolati (es. un NVMe
     # e un SATA) insieme, "size: smallest" verrebbe applicato solo
     # all'interno del primo bus che matcha almeno un disco, non
-    # all'insieme di tutti - non un problema per l'hardware target
-    # attuale (bus omogeneo).
+    # all'insieme di tutti - assunto "non un problema per l'hardware
+    # target attuale (bus omogeneo)" quando scritto, ma sulla Z8 reale i
+    # bus NON sono omogenei (NVMe + SATA + PMem tutti presenti insieme,
+    # confermato 2026-08-24): su un nodo così l'euristica "size:
+    # smallest" da sola non è affidabile, va usato --disk-serial /
+    # --datastore-disk-serial (sotto) invece di fidarsi del default.
     #
     # __SYSTEM_DISK_MATCH__ / __DATASTORE_DISK_MATCH__: placeholder
-    # sostituiti da scripts/build-iso.sh. Default: l'allowlist generico
-    # sopra. Su un nodo con PIU' dischi reali candidabili (es. altri
-    # dischi con OS/dati preesistenti collegati, scoperto sulla Z8 —
-    # vedi logbook_first_boot.md, sezione dischi Windows) l'allowlist
-    # generico NON basta: build-iso.sh --disk-serial <serial>
-    # --datastore-disk-serial <serial> genera invece un match per serial
-    # number esatto per ciascun disco (deterministico, ignora qualunque
-    # altro disco collegato).
+    # sostituiti da scripts/build-iso.sh. Default (ordini DIVERSI fra i
+    # due, decisione 2026-08-24): il sistema preferisce SATA/SAS/virtio,
+    # NVMe come ultima risorsa (riservato al Datastore); il Datastore fa
+    # l'opposto, NVMe preferito. Su un nodo con PIU' dischi reali
+    # candidabili (es. altri dischi con OS/dati preesistenti collegati,
+    # scoperto sulla Z8 — vedi logbook_first_boot.md, sezione dischi
+    # Windows) l'allowlist generico NON basta: build-iso.sh
+    # --disk-serial <serial> --datastore-disk-serial <serial> genera
+    # invece un match per serial number esatto per ciascun disco
+    # (deterministico, ignora qualunque altro disco collegato).
     swap:
       size: 0
     config:

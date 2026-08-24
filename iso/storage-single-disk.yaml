@@ -17,9 +17,13 @@
     #
     # __SYSTEM_DISK_MATCH__: placeholder sostituito da scripts/build-iso.sh.
     # Default (nessun --disk-serial passato a build-iso.sh): allowlist
-    # generico per path dei dischi "veri" (NVMe, SATA/SCSI, virtio) -
-    # "/dev/pmem*" non compare mai, quindi non puo' mai essere scelto
-    # per costruzione. NON basta pero' su un nodo con PIU' dischi reali
+    # generico per path dei dischi "veri", **in quest'ordine di
+    # preferenza**: SATA/SCSI, virtio, NVMe come ultima risorsa
+    # (decisione 2026-08-24: riservare l'NVMe, piu' prezioso/performante,
+    # al Datastore invece che "sprecarlo" sul boot - vedi
+    # scripts/build-iso.sh per il dettaglio) - "/dev/pmem*" non compare
+    # mai, quindi non puo' mai essere scelto per costruzione. NON basta
+    # pero' su un nodo con PIU' dischi reali
     # candidabili (es. altri dischi con OS/dati preesistenti collegati,
     # scoperto sulla Z8 - vedi logbook_first_boot.md, sezione dischi
     # Windows): in quel caso build-iso.sh --disk-serial <serial> genera
