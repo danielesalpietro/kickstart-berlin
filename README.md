@@ -6,18 +6,19 @@ hardware). Base derivata dal flusso di setup host di **Vast.ai**, propedeutica
 all'integrazione in [Grastorp](https://github.com/danielesalpietro/grastorp).
 
 > Stato: **early stage**, ma con la prima conferma end-to-end su hardware
-> fisico reale (HP Z8 G4 + RTX 3090, primo boot 2026-08-23) per le Fasi
-> 1-6, 8 e 10 — vedi [`logbook_first_boot.md`](logbook_first_boot.md) per
-> il diario completo del collaudo (3 bug trovati e corretti in
-> `postinstall/setup.sh`: pacchetti NVIDIA "fantasma" in Fase 4, `$HOME`
-> non definita e permessi `/root` in Fase 10) e
-> [`docs/collaudo-funzionale.md`](docs/collaudo-funzionale.md) per lo
-> stato aggiornato test-per-test. Fase 7 (daemon Vast.ai reale) e Fase 11
-> (self-test) restano da eseguire sullo stesso nodo — vedi
-> [`docs/setup.md`](docs/setup.md), Step 5 in poi. **Problema noto**: la
-> selezione automatica del disco (`match: {}`) non esclude i moduli
-> Optane PMem, quindi su hardware con PMem installato l'esito non è
-> deterministico — vedi `docs/collaudo-funzionale.md`.
+> fisico reale (HP Z8 G4 + RTX 3090, 2026-08-23/24) per **tutte** le fasi
+> implementate (1-8, 10-11) — vedi [`logbook_first_boot.md`](logbook_first_boot.md),
+> [`logbook-fase7.md`](logbook-fase7.md) e [`logbook-fase11.md`](logbook-fase11.md)
+> per il diario completo del collaudo (daemon Vast.ai installato, macchina
+> listata ID `148447`, self-test arrivato ai controlli reali) e
+> [`docs/collaudo-funzionale.md`](docs/collaudo-funzionale.md) per lo stato
+> aggiornato test-per-test. Restano due limiti **non risolvibili da questo
+> repo**: il self-test Fase 11 si blocca su un 403 identificato come
+> anti-self-rent per design di Vast.ai (serve supporto Vast.ai), e la
+> reliability/banda di questa rete specifica non soddisfa ancora i
+> requisiti minimi. Il fix per la selezione disco su hardware con moduli
+> Optane PMem è mergiato ma non ancora confermato con un boot reale — vedi
+> `docs/collaudo-funzionale.md`.
 
 ## Perché
 

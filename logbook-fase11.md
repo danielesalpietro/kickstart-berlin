@@ -258,6 +258,19 @@ del daemon), o attendere che la verifica avvenga per altra via (es.
 dopo rental reali, se il marketplace lo consente anche per macchine
 "unverified" con visibilità ridotta).
 
+## 2026-08-24 — Rieseguito senza `--ignore-requirements`: stesso esito, reliability in crescita
+
+Utente ha rieseguito `vastai self-test machine 148447` (comando puro,
+senza flag) e condiviso l'output. Stessi 3 gate falliti del terzo run
+sopra — download `25.5 Mb/s` e upload `4.4 Mb/s` identici (limite fisico
+della rete, non cambia da un run all'altro), stesso avviso 256 porte —
+con un solo valore diverso: **reliability salita da `0.5999925` a
+`0.6757908`**, coerente con quanto già annotato ("normale per un host
+nuovo, si accumula con l'uso"). Nessuna informazione nuova rispetto a
+quanto già isolato sopra (banda fisica + blocco anti-self-rent restano
+gli unici blocchi residui, entrambi esterni a questo repo) — confermato
+qui solo per completezza del diario.
+
 ## Prossimi passi
 
 - [x] Eseguire il self-test reale — **fatto sopra**, `machine_id`
