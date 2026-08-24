@@ -3,21 +3,42 @@
     # più piccolo dello storage dati; da riconfermare con test reali,
     # vedi logbook-fase1.md), Datastore Grastorp sull'altro disco intero.
     #
-    # "match: {size: smallest}" esclude automaticamente il disco/chiavetta
-    # di installazione (install-media) dal match, per costruzione della
+    # "size: smallest" esclude automaticamente il disco/chiavetta di
+    # installazione (install-media) dal match, per costruzione della
     # feature - vedi Autoinstall configuration reference (Subiquity). La
-    # seconda azione "disk" con "match: {}" prende per esclusione l'unico
-    # disco rimasto non ancora assegnato: se in fase di installazione
-    # risultasse un solo disco reale disponibile, questa azione fallisce
+    # seconda azione "disk" prende per esclusione l'unico disco rimasto
+    # non ancora assegnato: se in fase di installazione risultasse un
+    # solo disco reale disponibile, questa azione fallisce
     # l'installazione invece di procedere in modo scorretto (fail-fast
     # intenzionale: usare la topologia "single" in quel caso).
+    #
+    # "match" e' una lista ordinata di allowlist per path (path supporta
+    # il globbing, "match" come lista e' supportato da Subiquity
+    # 24.08.1, provata in ordine finche' una voce non trova un disco
+    # libero) invece di un dict semplice ("match: {size: smallest}" /
+    # "match: {}") — su hardware con moduli Intel Optane Persistent
+    # Memory un match senza allowlist di path puo' selezionare un modulo
+    # PMem (enumerato prima dei dischi reali dall'ordine di probing del
+    # kernel) invece di un disco vero. Mai emerso nei collaudi precedenti
+    # (VM senza Optane) prima del primo boot reale sulla Z8, stesso
+    # problema di storage-single-disk.yaml — vedi Problema 1 in
+    # logbook_first_boot.md. Limite noto: se il sistema avesse dischi
+    # "veri" di bus diversi mescolati (es. un NVMe e un SATA) insieme,
+    # "size: smallest" verrebbe applicato solo all'interno del primo bus
+    # che matcha almeno un disco, non all'insieme di tutti - non un
+    # problema per l'hardware target attuale (bus omogeneo).
     swap:
       size: 0
     config:
       - type: disk
         id: system-disk
         match:
-          size: smallest
+          - path: /dev/nvme*n1
+            size: smallest
+          - path: /dev/sd*
+            size: smallest
+          - path: /dev/vd*
+            size: smallest
         ptable: gpt
         wipe: superblock
 
@@ -62,7 +83,10 @@
 
       - type: disk
         id: datastore-disk
-        match: {}
+        match:
+          - path: /dev/nvme*n1
+          - path: /dev/sd*
+          - path: /dev/vd*
         ptable: gpt
         wipe: superblock
 

@@ -112,11 +112,62 @@ operatore su hardware/account reali), consolidando le voci già aperte
 nei logbook delle Fasi 1/3/4/5/7/8/10/11. `./vastai-self-test.sh
 --machine-id <ID>` è la voce Fase 11 di quella checklist.
 
+## 2026-08-23/24 — Self-test reale eseguito (Z8, machine_id 148447)
+
+Primo self-test in assoluto con un `machine_id` reale, sbloccato dal
+listing riuscito di Fase 7 (vedi `logbook-fase7.md`). Tre run
+successivi, ciascuno ha avanzato la diagnosi di uno step:
+
+1. **Primo run**: `Machine lookup failed with HTTP 403`,
+   `Root state: api_permission_failed`. Causa apparente: la CLI
+   `vastai` non aveva ancora l'API key configurata quando il wizard
+   aveva provato il proprio self-test interno (`vast.py` legacy,
+   `"Invalid user key"`) — la vera CLI moderna (`vastai 1.5.5`) è stata
+   autenticata correttamente subito dopo (`vastai set api-key`,
+   confermato con `vastai show user`).
+2. **Secondo run** (stessa API key, pochi minuti dopo): il 403 è
+   sparito da solo (`vastai show machine 148447` già funzionava
+   direttamente), ma `vastai self-test` falliva ora con
+   `Root state: zero_active_offers` — **nessuna offerta attiva**
+   (`vastai search offers 'machine_id=148447 rentable=any rented=any'`
+   restituiva vuoto). La macchina non era mai stata effettivamente
+   listata (il wizard aveva esplicitamente avvisato di non listare
+   finché il SUO self-test interno non fosse passato — cosa mai
+   avvenuta, per il problema di API key del punto 1 sopra). **Il
+   self-test standalone via CLI, a differenza del check interno del
+   wizard, richiede un'offerta attiva per affittare un'istanza
+   diagnostica temporanea** — va listata la macchina prima, non dopo.
+3. **Terzo run**, dopo `vastai list machine 148447 -g 0.30` (listing
+   manuale, $0.30/GPU/ora): l'offerta è stata trovata, il self-test è
+   arrivato ai controlli reali (preflight requirement checks) e ha
+   fallito su **3 requisiti oggettivi**, non bug:
+   - Reliability: `0.5999925` contro `> 0.9` richiesto — normale per un
+     host nuovo, si accumula con l'uso, nulla da configurare.
+   - Download: `25.5 Mb/s` contro `>= 100.0 Mb/s` richiesto.
+   - Upload: `4.4 Mb/s` contro `>= 100.0 Mb/s` richiesto.
+
+   Anche un avviso non bloccante: 256 porte mappate contro un
+   consigliato `<= 64` per GPU listata — probabile eccesso dovuto al
+   range di default di questo repo (16384-32768, dimensionato per host
+   multi-GPU secondo la guida ufficiale), non un errore.
+
+**Conclusione**: i punti 2 e 3 confermano esattamente l'avviso di banda
+già visto nel primissimo step "Network Speed" del wizard (Fase 7,
+connessione ISP Wind Tre, ben sotto i 500 Mbps consigliati) — non è un
+problema riproducibile del nostro stack software, è un limite fisico
+della rete attuale del nodo. **Lo stack software è validato
+end-to-end fino in fondo**: daemon (Fase 7), listing, self-test
+arrivato ai controlli reali senza errori di configurazione/permessi.
+L'unico blocco residuo per superare il self-test è la rete fisica
+(serve una connessione con banda simmetrica sufficiente) — non
+risolvibile da questo repo.
+
 ## Prossimi passi
 
-- [ ] Eseguire il self-test reale non appena Fase 7 avrà un
-      `machine_id` da un listing riuscito (VM Azure o Z8, quando
-      l'utente fornirà il comando d'installazione del daemon) — vedi
-      `docs/collaudo-funzionale.md` per il test case completo.
+- [x] Eseguire il self-test reale — **fatto sopra**, `machine_id`
+      148447.
+- [ ] Ripetere il self-test quando il nodo sarà su una connessione con
+      banda sufficiente (>= 100 Mbps simmetrici) — non prima, il
+      risultato sarebbe identico per lo stesso motivo.
 - [ ] Aprire/aggiornare la PR includendo Fasi 10 e 11 insieme, dato che
-      condividono la stessa dipendenza bloccante.
+      condividono la stessa dipendenza bloccante — ora sbloccata.

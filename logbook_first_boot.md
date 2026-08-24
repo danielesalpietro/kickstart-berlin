@@ -30,7 +30,7 @@ comportamento atteso, non un problema:
 - Connessione confermata con la chiave privata fornita dall'utente:
   hostname generato `berlin-3eie`, utente `admin`, sudo NOPASSWD attivo.
 
-## 2026-08-23 — Problema 1: storage finito sui moduli PMem, non su sda
+## 2026-08-23 — Problema 1 (corretto nel repo il 2026-08-24): storage finito sui moduli PMem, non su sda
 
 `lsblk` sul nodo mostra root, ESP e Datastore tutti su `/dev/pmem0s*`
 (modulo Intel Optane Persistent Memory, modalità sector/BTT), mentre

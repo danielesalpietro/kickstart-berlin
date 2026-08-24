@@ -1,12 +1,30 @@
     # Topologia "single": un solo disco fisico. Sistema (EFI + root) e
     # Datastore Grastorp condividono lo stesso disco: __SYSTEM_PARTITION_SIZE__
     # per il root, il resto del disco al Datastore.
+    #
+    # "match" e' una lista ordinata di allowlist per path (Autoinstall
+    # configuration reference, sezione "Disk selection extensions": il
+    # match spec "path" supporta il globbing; da Subiquity 24.08.1 il
+    # campo "match" accetta una lista, provata in ordine finche' una
+    # voce non trova un disco libero) invece del precedente "match: {}"
+    # ("un disco arbitrario qualsiasi"). "match: {}" su hardware con
+    # moduli Intel Optane Persistent Memory ha selezionato un modulo
+    # PMem (/dev/pmem0, enumerato prima del disco reale /dev/sda
+    # dall'ordine di probing del kernel) invece del disco vero — mai
+    # emerso nei collaudi precedenti (VM Azure/Hyper-V/QEMU, nessun
+    # Optane) prima del primo boot reale sulla Z8. L'allowlist elenca
+    # solo i prefissi di path dei dischi "veri" (NVMe, SATA/SCSI,
+    # virtio) - "/dev/pmem*" non compare mai, quindi non puo' mai essere
+    # scelto per costruzione. Vedi Problema 1 in logbook_first_boot.md.
     swap:
       size: 0
     config:
       - type: disk
         id: system-disk
-        match: {}
+        match:
+          - path: /dev/nvme*n1
+          - path: /dev/sd*
+          - path: /dev/vd*
         ptable: gpt
         wipe: superblock
 
