@@ -351,6 +351,52 @@ riavvio automatico di `vast_metrics.service` da parte di `needrestart`
 (dipendenza di libreria toccata) — verificato attivo subito dopo,
 nessun impatto.
 
+## 2026-08-24 (continua) — `region1` riconfigurata in `fsdax` (issue #35)
+
+Informazione arrivata da un'altra sessione/progetto (EMH-2), **non
+presa per buona senza verifica indipendente**: dettaglio `ipmctl`/`ndctl`
+sulla topologia PMem reale, con la conclusione che entrambe le region
+AppDirect hanno `FreeCapacity: 0.000 GiB` (tutta la capacità è già
+allocata in namespace esistenti, non c'è "spazio libero" da trovare) e
+che abilitare EMH-2 richiede distruggere/ricreare il namespace di
+`region1` (`pmem1s`, vuota/mai montata) in modalità `fsdax` o `devdax`.
+
+Verificato di persona sul nodo prima di agire, non fidandosi del solo
+testo incollato:
+
+- `ipmctl show -dimm`: 4 DIMM Optane, 126.422 GiB ciascuno, `Disabled,
+  Frozen` — confermato identico.
+- `ipmctl show -region`: 2 region AppDirect da 252 GiB, entrambe
+  `FreeCapacity: 0.000 GiB` — confermato identico.
+- `ndctl list -Nu`: `namespace1.0` → `pmem1s`, modalità `sector` —
+  confermato identico.
+- `grep pmem1 /etc/fstab`: nessun risultato — nessuna automazione del
+  repo né nient'altro sul nodo referenzia `pmem1s`. `namespace0.0` →
+  `pmem0s` (root, `/boot/efi`, Datastore — tutto ciò che è vivo sul
+  nodo) resta un namespace completamente separato, non toccato
+  dall'operazione.
+
+Eseguito su conferma esplicita dell'utente:
+
+```
+sudo ndctl destroy-namespace namespace1.0 --force
+sudo ndctl create-namespace -r region1 -m fsdax
+```
+
+Risultato: `namespace1.0` ora in modalità `fsdax`, block device
+`pmem1` (senza il suffisso "s" — la "s" indicava la modalità sector
+precedente), 248.1G. Verificato dopo l'operazione: `docker`,
+`containerd`, `vastai.service`, `vast_metrics.service` tutti ancora
+attivi, `/` (su `pmem0s2`, namespace0.0) invariato — nessun impatto
+sul resto del nodo, come atteso data la separazione fra region0/region1.
+
+**Non ancora fatto**: nessun filesystem creato su `/dev/pmem1`, nessun
+mount — la riconfigurazione fsdax è il prerequisito per EMH-2, non
+l'integrazione stessa (fuori scope di questo repo, che tratta la Z8
+come host GPU generico, non come nodo EMH-2 specifico — resta un'area
+di lavoro esterna a kickstart-berlin, coordinarsi con l'altra
+sessione/progetto per i passi successivi).
+
 ## Prossimi passi
 
 - [x] Riconciliare il branch — vedi sezione sopra.
