@@ -11,9 +11,9 @@ momento?**
 
 Il piano a 14 fasi è concettualmente solido e per la prima volta è stato
 validato end-to-end su hardware fisico reale (HP Z8 G4 + RTX 3090,
-23-24/08/2026). Quel collaudo ha prodotto **9 nuove issue** (#33-#37,
-#40-#41 più #40 già numerata) e, soprattutto, **6 pull request già scritte,
-riviste e mergeable** che il `README.md` e `docs/collaudo-funzionale.md`
+23-24/08/2026). Quel collaudo ha prodotto **6 nuove issue** (#33-#37, #41)
+e, soprattutto, **6 pull request già scritte, riviste e mergeable** che il
+`README.md` e `docs/collaudo-funzionale.md`
 non menzionano ancora. Il collo di bottiglia oggi **non è la scrittura di
 nuovo codice**: è la revisione umana e il merge di lavoro già pronto, più
 una decisione di governance non ancora presa su una PR che ha bypassato un

@@ -382,7 +382,9 @@ equivalente: aggiunta originale, ispirata alla DCUI di VMware ESXi.)*
 
 ## Riferimenti
 
-- [`docs/project-plan-review-2026-08-25.md`](docs/project-plan-review-2026-08-25.md) —
+- [`docs/project-plan-review-2026-08-25.md`](docs/project-plan-review-2026-08-25.md)
+  (copie derivate [`.html`](docs/project-plan-review-2026-08-25.html)/
+  [`.docx`](docs/project-plan-review-2026-08-25.docx)) —
   revisione del piano a fasi dopo il primo collaudo su hardware fisico
   reale (Z8): stato verificato per fase, PR aperte non ancora mergiate,
   debito tecnico senza fix in corso, raccomandazioni prioritizzate.
