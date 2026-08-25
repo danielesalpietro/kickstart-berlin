@@ -382,6 +382,10 @@ equivalente: aggiunta originale, ispirata alla DCUI di VMware ESXi.)*
 
 ## Riferimenti
 
+- [`docs/project-plan-review-2026-08-25.md`](docs/project-plan-review-2026-08-25.md) —
+  revisione del piano a fasi dopo il primo collaudo su hardware fisico
+  reale (Z8): stato verificato per fase, PR aperte non ancora mergiate,
+  debito tecnico senza fix in corso, raccomandazioni prioritizzate.
 - [Grastorp](https://github.com/danielesalpietro/grastorp) — repo di
   destinazione finale, di cui questo è il prerequisito d'installazione.
 - [grastorp#8](https://github.com/danielesalpietro/grastorp/issues/8),
