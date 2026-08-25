@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project Plan Review — 25 agosto 2026</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --muted: #5b6270;
+    --border: #d8dce3;
+    --accent: #9a3412;
+    --code-bg: #f2f3f5;
+    --table-head: #eef0f3;
+    --link: #1d4ed8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 0;
+    background: #f6f7f9;
+    color: var(--fg);
+    font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.6;
+  }
+  main {
+    max-width: 880px;
+    margin: 0 auto;
+    background: var(--bg);
+    padding: 3rem 3.5rem 5rem;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    min-height: 100vh;
+  }
+  h1 {
+    font-size: 1.9rem;
+    margin: 0 0 0.4rem;
+    border-bottom: 3px solid var(--accent);
+    padding-bottom: 0.6rem;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 0.95rem;
+    margin-bottom: 2rem;
+  }
+  h2 {
+    font-size: 1.3rem;
+    margin-top: 2.6rem;
+    margin-bottom: 0.9rem;
+    padding-top: 0.4rem;
+    border-top: 1px solid var(--border);
+    color: var(--accent);
+  }
+  h1 + p.lead {
+    font-size: 1.02rem;
+    color: #33383f;
+  }
+  p { margin: 0.9rem 0; }
+  ul, ol { padding-left: 1.4rem; }
+  li { margin: 0.35rem 0; }
+  code {
+    background: var(--code-bg);
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    font-size: 0.88em;
+    font-family: "SF Mono", Consolas, Menlo, monospace;
+  }
+  a { color: var(--link); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  strong { color: #111; }
+  blockquote {
+    margin: 1rem 0;
+    padding: 0.6rem 1.1rem;
+    background: #fdf3ee;
+    border-left: 4px solid var(--accent);
+    color: #4a3428;
+    font-style: italic;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.1rem 0 1.6rem;
+    font-size: 0.92rem;
+  }
+  caption { display: none; }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 0.55rem 0.7rem;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: var(--table-head);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  tbody tr:nth-child(even) { background: #fafbfc; }
+  .badge {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    background: #eef0f3;
+    color: var(--muted);
+    margin-right: 0.4rem;
+  }
+  .meta-box {
+    background: #f2f3f5;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.3rem;
+    margin: 1.6rem 0 0;
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+  .priority { font-weight: 700; }
+  .priority.p0 { color: #15803d; }
+  .priority.p1 { color: #b45309; }
+  .priority.p2 { color: #b91c1c; }
+  .priority.p3 { color: var(--muted); }
+  footer {
+    margin-top: 3.5rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.82rem;
+  }
+  @media (max-width: 700px) {
+    main { padding: 1.6rem 1.2rem 3rem; border: none; }
+    table { font-size: 0.82rem; }
+    th, td { padding: 0.4rem 0.5rem; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Project Plan Review</h1>
+<div class="subtitle">kickstart-berlin — 25 agosto 2026</div>
+
+<p class="lead">Revisione del piano a fasi (<a href="https://github.com/danielesalpietro/kickstart-berlin/issues/15">issue&nbsp;#15</a>)
+alla luce di <code>README.md</code>, <code>docs/collaudo-funzionale.md</code>,
+i 12 <code>logbook-*.md</code> e lo stato reale di issue/PR su GitHub. Non
+sostituisce nessuno di quei documenti — li mette in relazione per
+rispondere a una domanda che nessuno di essi copre da solo: <strong>cosa
+blocca davvero il progresso in questo momento?</strong></p>
+
+<h2>Executive summary</h2>
+<p>Il piano a 14 fasi è concettualmente solido e per la prima volta è
+stato validato end-to-end su hardware fisico reale (HP Z8 G4 + RTX 3090,
+23-24/08/2026). Quel collaudo ha prodotto <strong>6 nuove issue</strong>
+(#33-#37, #41) e, soprattutto, <strong>6 pull request già scritte, riviste
+e mergeable</strong> che il <code>README.md</code> e
+<code>docs/collaudo-funzionale.md</code> non menzionano ancora. Il collo di
+bottiglia oggi <strong>non è la scrittura di nuovo codice</strong>: è la
+revisione umana e il merge di lavoro già pronto, più una decisione di
+governance non ancora presa su una PR che ha bypassato un checkpoint
+esplicito. La Fase 11 (self-test) va inoltre riclassificata: è bloccata
+per design da Vast.ai stesso, non da un difetto di questo repo.</p>
+
+<h2>1. Stato delle 14 fasi (verificato, non solo dal README)</h2>
+<table>
+<thead><tr><th>#</th><th>Fase</th><th>Stato README</th><th>Verifica di questa review</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>OS/autoinstall</td><td>Fatto</td><td>Confermato, chiuso (#1)</td></tr>
+<tr><td>2</td><td>Partizionamento disco</td><td>In corso</td><td>Confermato su hardware reale, ma con <strong>debito aperto</strong>: <code>match: {}</code> originale sostituito da un allowlist di path che esclude PMem (mergiato, PR&nbsp;#30) — <strong>non ancora testato con un boot reale post-fix</strong>. PR&nbsp;#40 (aperta) inverte l'ordine di priorità SATA/NVMe, altro cambiamento non ancora in <code>develop</code></td></tr>
+<tr><td>3</td><td>Storage/Datastore</td><td>In corso</td><td>Confermato indirettamente, ma <strong>PR&nbsp;#41 rivela che il fix è incompleto</strong>: <code>daemon.json</code> punta al Datastore, il <code>config.toml</code> di containerd no — la maggior parte dei dati reali (33G su 33.2G nel collaudo Z8) non segue il Datastore. Nessuna PR aperta risolve ancora questo in <code>setup.sh</code> (PR&nbsp;#42 è solo documentazione del fix live)</td></tr>
+<tr><td>4</td><td>Driver NVIDIA</td><td>In corso</td><td>Confermato su GPU reale (RTX 3090, driver 595.84). Bug "pacchetti fantasma" in <code>apt-mark hold</code> <strong>già corretto in <code>develop</code></strong> (verificato leggendo <code>postinstall/setup.sh:175</code>)</td></tr>
+<tr><td>5</td><td>Docker</td><td>In corso</td><td>Confermato Docker+runtime NVIDIA, ma <strong>bug reale</strong>: <code>admin</code> non è mai aggiunto al gruppo <code>docker</code> in <code>develop</code> (verificato: nessun <code>usermod -aG docker</code> nel file). Fix pronto in <strong>PR&nbsp;#38, non mergiata</strong></td></tr>
+<tr><td>6</td><td>Rete</td><td>In corso</td><td>Confermato (regole ufw corrette, installato-ma-inattivo per design)</td></tr>
+<tr><td>7</td><td>Daemon Vast.ai reale</td><td>In corso</td><td>Confermato: daemon installato, macchina listata (ID 148447). Bug storage containerd emerso qui (vedi Fase 3)</td></tr>
+<tr><td>8</td><td>Info hardware</td><td>In corso</td><td>Confermato, <code>nvidia_gpu</code> popolato con dati reali</td></tr>
+<tr><td>9</td><td>Manutenzione Docker</td><td>Da fare</td><td>Nessun lavoro iniziato, nessuna PR</td></tr>
+<tr><td>10</td><td>CLI vastai</td><td>Fatto</td><td>Confermato, <code>vastai 1.5.5</code> installato e funzionante. 2 bug (<code>$HOME</code>, permessi <code>/root</code>) già corretti in <code>develop</code></td></tr>
+<tr><td>11</td><td>Self-test</td><td>Fatto (script)</td><td><strong>Da riclassificare</strong> — vedi sezione 5. Lo script è pronto e corretto, ma il test funzionale reale è bloccato per design lato Vast.ai (anti-self-rent), non completabile da questo repo</td></tr>
+<tr><td>12</td><td>Port forwarding</td><td>Da fare</td><td>Nessun lavoro iniziato</td></tr>
+<tr><td>13</td><td>Listing marketplace</td><td>Fuori scope</td><td>Invariato, corretto lasciarlo così finché grastorp#15 non lo riapre</td></tr>
+<tr><td>14</td><td>Report finale</td><td>Da fare</td><td>Nessun lavoro iniziato</td></tr>
+</tbody>
+</table>
+
+<p><strong>Osservazione strutturale</strong>: le fasi 9, 12, 14 sono ferme
+da prima del collaudo reale (18/08) e non hanno ricevuto alcun lavoro
+nemmeno durante la sessione Z8 del 23-24/08, che si è concentrata su
+5-8/10/11 più le issue impreviste. Non è un problema — riflette l'ordine
+di lavoro suggerito dall'issue #15 stessa — ma vale la pena renderlo
+esplicito: sono le uniche tre fasi rimaste "vergini" del piano
+originale.</p>
+
+<h2>2. Il vero collo di bottiglia: 6 PR pronte, non ancora mergiate</h2>
+<p><code>docs/collaudo-funzionale.md</code> e <code>README.md</code>
+descrivono lo stato di <code>develop</code>, ma <strong>6 pull request
+aperte, tutte in <code>mergeable_state: clean</code> contro l'attuale
+<code>develop</code> (a0bf4f1)</strong>, contengono lavoro già rivisto che
+quei documenti non riflettono ancora:</p>
+
+<table>
+<thead><tr><th>PR</th><th>Chiude</th><th>Contenuto</th><th>Rischio di merge</th></tr></thead>
+<tbody>
+<tr><td><a href="https://github.com/danielesalpietro/kickstart-berlin/pull/38">#38</a></td><td>#34</td><td><code>usermod -aG docker admin</code> in <code>phase5_docker()</code></td><td>Basso — 1 riga di fix idempotente, review statica già fatta</td></tr>
+<tr><td><a href="https://github.com/danielesalpietro/kickstart-berlin/pull/40">#40</a></td><td>—</td><td>Inverte priorità disco di sistema: SATA/SAS prima di NVMe (NVMe riservato al Datastore)</td><td>Basso — decisione già presa con l'utente, non tocca <code>--disk-serial</code> espliciti</td></tr>
+<tr><td><a href="https://github.com/danielesalpietro/kickstart-berlin/pull/42">#42</a></td><td>(documenta #41)</td><td>Solo <code>logbook-fase7.md</code> — nessun fix di codice, registra il gap containerd</td><td>Nullo — solo <code>.md</code></td></tr>
+<tr><td><a href="https://github.com/danielesalpietro/kickstart-berlin/pull/43">#43</a></td><td>#35, #37</td><td>Solo <code>logbook_first_boot.md</code> — documenta install live di <code>ndctl</code>/<code>ipmctl</code>/<code>pip3</code>, nessuna automazione in <code>setup.sh</code></td><td>Nullo — solo <code>.md</code></td></tr>
+<tr><td><a href="https://github.com/danielesalpietro/kickstart-berlin/pull/32">#32</a></td><td>—</td><td><code>CLAUDE.md</code> (nuova direttiva: in conflitto Vast.ai vince), riconciliazione <code>README.md</code>/<code>docs/collaudo-funzionale.md</code>/<code>logbook-fase11.md</code> con PR&nbsp;#30</td><td>Nullo — solo <code>.md</code>, ma <strong>propedeutico</strong>: senza questa PR, i documenti di progetto restano disallineati dallo stato reale confermato il 23-24/08</td></tr>
+<tr><td><a href="https://github.com/danielesalpietro/kickstart-berlin/pull/39">#39</a></td><td>(issue #33)</td><td><code>postinstall/node-manage.py</code>: menu curses interattivo via SSH che <strong>modifica</strong> stato reale (IP via <code>netplan try</code>, restart daemon Vast.ai, azioni CLI <code>vastai</code>)</td><td><strong>Vedi sezione 4 — non è un rischio tecnico, è un rischio di processo</strong></td></tr>
+</tbody>
+</table>
+
+<p><strong>Raccomandazione d'ordine di merge</strong>: #32 e #43 prima
+(solo doc, zero rischio, riallineano i documenti di progetto alla
+realtà), poi #38 e #40 (fix comportamentali isolati, un file ciascuno),
+poi #42 (doc). #39 va trattato separatamente — vedi sotto — perché non è
+un fix, è una nuova capability con un checkpoint esplicito ancora
+aperto.</p>
+
+<h2>3. Debito tecnico reale non ancora coperto da nessuna PR</h2>
+<p>Due problemi confermati sul collaudo Z8 <strong>non hanno ancora un fix
+in nessun branch</strong>, a differenza di quanto la tabella PR sopra
+potrebbe far pensare:</p>
+<ul>
+<li><strong>Issue #41 (containerd root path)</strong>: PR&nbsp;#42 la
+<em>documenta</em> ma non la <em>risolve</em> —
+<code>/etc/containerd/config.toml</code> continua a non essere gestito da
+<code>phase3_docker_storage()</code> né dal postflight di
+<code>install-vastai-host.sh</code>. Finché resta così, l'intera promessa
+dell'architettura ESX-style di Fase 2/3 ("Docker vive sul Datastore") è
+<strong>falsa per la stragrande maggioranza dei dati reali</strong> (33G
+su 33.2G nel collaudo Z8 erano fuori dal Datastore). Questo è, in termini
+di impatto, il bug più serio scoperto nell'intero collaudo — non ha
+ancora una PR dedicata al fix di codice.</li>
+<li><strong>Issue #36 (CUDA toolkit nativo)</strong>: nessuna decisione
+presa, nessuna PR. Impatto oggi basso (i workload restano
+containerizzati), ma resta un item aperto senza owner.</li>
+</ul>
+
+<h2>4. Punto di governance da chiudere prima del merge: PR #39 / issue #33</h2>
+<p>L'issue #33, scritta dall'utente stesso, pone esplicitamente un
+vincolo <strong>prima</strong> di iniziare l'implementazione:</p>
+<blockquote>Da fare prima di iniziare l'implementazione: discussione
+esplicita con l'utente su quali azioni (se ce ne sono) il menu deve poter
+eseguire, ...</blockquote>
+<p>Le tre checkbox dell'issue risultano ancora <strong>non
+spuntate</strong>. Ciò nonostante, PR&nbsp;#39 esiste già: 1683 righe
+aggiunte, un menu curses completo che può riconfigurare la rete
+(<code>netplan try</code>), riavviare il daemon Vast.ai e invocare
+comandi <code>vastai</code> in scrittura (unlist/self-test) — esattamente
+il tipo di "azioni più ampie" che l'issue #33 elencava come da valutare
+con cautela, in tensione diretta con la direttiva #1 di
+<code>CLAUDE.md</code> ("nessun modo di login o azione locale, solo
+chiave SSH").</p>
+<p>Questo non è necessariamente un problema — il design della PR è
+ragionevole (<code>netplan try</code> con rollback automatico è la scelta
+giusta) — ma <strong>il checkpoint che l'issue stessa richiedeva non
+risulta documentato come avvenuto</strong>. Prima di mergiare #39, va
+chiarito esplicitamente con l'utente:</p>
+<ul>
+<li>Il "ok implicito" a procedere è già stato dato fuori da GitHub (es. in
+sessione diretta con l'utente, come suggerisce il fatto che la issue
+stessa nasce da una richiesta dell'utente)? Se sì, andrebbe comunque
+registrato come commento sull'issue #33 per chiudere le checkbox —
+coerente con la disciplina "logbook prima della PR" già in uso
+altrove.</li>
+<li>Il perimetro di azioni implementate (rete, daemon Vast.ai, CLI
+vastai) corrisponde a quanto l'utente si aspettava, o eccede quanto
+discusso?</li>
+</ul>
+<p><strong>Raccomandazione</strong>: non trattare #39 come le altre 5 PR
+"pronte al merge meccanico". Serve una conferma esplicita dell'utente sul
+perimetro prima del merge, anche se il codice stesso è già stato rivisto
+staticamente.</p>
+
+<h2>5. Fase 11 va riclassificata, non "completata"</h2>
+<p><code>docs/collaudo-funzionale.md</code> e la tabella fasi la segnano
+"Fatto"/"Confermato" con qualifiche già caute. Ma
+<code>logbook-fase11.md</code> (righe 213-286) documenta una conclusione
+più netta, che vale la pena portare esplicitamente nei documenti di
+stato: il self-test reale fallisce con <strong>403 sistematico</strong>
+perché Vast.ai blocca per design il noleggio di una macchina da parte del
+proprio stesso host (<code>host_id</code> dell'offerta coincide con
+l'account che tenta il rent) — confermato incrociando i log interni del
+daemon (<code>self_test.log</code>), non un'ipotesi. <strong>Non è
+risolvibile da questo repo.</strong></p>
+<p>Raccomandazione: aggiornare lo stato da "Da fare — blocca su Fase 7" a
+qualcosa come "<strong>Bloccato esternamente (design Vast.ai
+anti-self-rent)</strong> — riprovabile solo dopo un affitto reale della
+macchina, o dopo supporto diretto Vast.ai". La distinzione conta: "Da
+fare" implica che c'è ancora lavoro di questo repo da fare, mentre qui
+non c'è — è la stessa distinzione "Verificato in sandbox" vs "Non
+verificabile per costruzione" che CLAUDE.md (direttiva #4) già impone per
+altri casi, estesa a un terzo stato: "non risolvibile qui".</p>
+
+<h2>6. Gap di collaudo automatico (CI)</h2>
+<p><code>scripts/boot-test-qemu.sh</code> verifica login SSH e mount del
+Datastore, ma <strong>non ha GPU</strong> (non può eseguire Fase 4/5
+realmente) e <strong>non verifica <code>/etc/containerd/config.toml</code></strong>
+— motivo per cui il bug #41 è stato scoperto solo su hardware fisico
+reale, non in CI, nonostante fosse strutturalmente presente fin dalla
+Fase 3. Allo stesso modo, l'assenza di <code>admin</code> dal gruppo
+<code>docker</code> (#34) non ha un check CI dedicato:
+<code>boot-test-qemu.sh</code> verifica che il servizio postinstall
+completi, non che <code>docker</code> sia utilizzabile senza
+<code>sudo</code> dall'utente <code>admin</code>.</p>
+<p><strong>Raccomandazione</strong>: due asserzioni aggiuntive, a basso
+costo, in <code>scripts/boot-test-qemu.sh</code>:</p>
+<ol>
+<li><code>grep root /etc/containerd/config.toml</code> punta sotto il
+Datastore, non sotto <code>/var/lib/docker</code> di default.</li>
+<li><code>groups admin</code> include <code>docker</code>.</li>
+</ol>
+<p>Nessuna delle due richiede GPU reale — sono entrambe verificabili
+nell'ISO di test QEMU esistente, e avrebbero intercettato #34 e
+(parzialmente) #41 prima del collaudo su hardware fisico.</p>
+
+<h2>7. Raccomandazioni prioritizzate</h2>
+
+<p><span class="priority p0">P0</span> — questa settimana, nessuna nuova decisione richiesta</p>
+<ol>
+<li>Mergiare PR #32 (riallinea <code>CLAUDE.md</code>/<code>README.md</code>/<code>docs/collaudo-funzionale.md</code>/<code>logbook-fase11.md</code> allo stato reale confermato) e #43 (documentazione tooling) — zero rischio, sblocca la leggibilità degli altri documenti.</li>
+<li>Mergiare PR #38 (#34, gruppo docker) e #40 (priorità disco) — fix isolati, review statica già fatta, nessuna decisione aperta.</li>
+</ol>
+
+<p><span class="priority p1">P1</span> — decisione breve, poi implementazione</p>
+<ol start="3">
+<li>Aprire una issue/PR dedicata al fix vero di #41 (containerd root path) — PR&nbsp;#42 la documenta ma non la risolve. La issue #41 propone già la soluzione più semplice (stessa directory di <code>data-root</code>, sotto <code>${DATASTORE}/docker/containerd</code>) — sembra pronta per essere implementata senza bisogno di ulteriori decisioni.</li>
+<li>Aggiungere le due asserzioni CI descritte in sezione 6.</li>
+<li>Aggiornare lo stato di Fase 11 in <code>docs/collaudo-funzionale.md</code> come descritto in sezione 5 (probabilmente già coperto da PR&nbsp;#32 — verificare il diff prima di duplicare).</li>
+</ol>
+
+<p><span class="priority p2">P2</span> — richiede decisione esplicita dell'utente prima di procedere</p>
+<ol start="6">
+<li>PR #39 / issue #33: chiudere il checkpoint di governance (sezione 4) prima del merge.</li>
+<li>Issue #36 (CUDA toolkit): decidere se serve un caso d'uso nativo o resta fuori scope.</li>
+<li>Issue #35 (PMem region1 fsdax/devdax): chiarire il caso d'uso EMH-2 esatto prima di automatizzare — rischio di irreversibilità già segnalato nell'issue stessa.</li>
+</ol>
+
+<p><span class="priority p3">P3</span> — prima della produzione, non urgente ora</p>
+<ol start="9">
+<li>Rimuovere gli strumenti dev-only dal nodo Z8 (<code>gh</code>, Claude Code CLI, GitHub Actions self-hosted runner) — rischio di sicurezza già esplicitamente notato in <code>logbook_first_boot.md</code> (runner self-hosted su repo pubblico, sulla stessa macchina affittata a terzi via Vast.ai).</li>
+</ol>
+
+<p><strong>Non urgente, nessun lavoro in corso</strong></p>
+<ol start="10">
+<li>Fasi 9, 12, 14 restano ferme — nessuna azione richiesta ora, ma è la prossima area di lavoro "vergine" una volta esaurito il backlog delle 6 PR aperte e delle issue impreviste.</li>
+</ol>
+
+<h2>8. Domande aperte per l'utente</h2>
+<ul>
+<li>Il perimetro di azioni di PR #39 (rete, daemon, CLI vastai in scrittura) è quello concordato, o va ristretto/ampliato prima del merge?</li>
+<li>Issue #36: esiste già un caso d'uso reale non containerizzato per CUDA toolkit nativo, o resta "nice to have"?</li>
+<li>Issue #35: qual è il caso d'uso EMH-2 esatto per region1 (fsdax vs devdax)? Determina se/come automatizzare la riconfigurazione.</li>
+<li>Timeline per il prossimo reinstall da zero su Z8 (dischi Windows scollegati fisicamente, come deciso in <code>logbook_first_boot.md</code>) — è il momento in cui si può finalmente confermare end-to-end il fix PMem di PR&nbsp;#30 con un boot reale, mai testato dopo il merge.</li>
+</ul>
+
+<h2>9. Prossimi passi consigliati</h2>
+<ol>
+<li>Merge P0 (PR #32, #43, #38, #40) — sblocca la leggibilità dello stato di progetto per qualunque sessione futura.</li>
+<li>Issue/PR dedicata al fix reale di #41 (containerd), la lacuna di impatto più alto ancora senza codice.</li>
+<li>Rispondere alle domande in sezione 8 prima di toccare #33/#39, #35, #36.</li>
+<li>Aggiungere le due asserzioni CI di sezione 6, per evitare che lo stesso tipo di bug (#34, #41) richieda di nuovo un collaudo su hardware fisico per essere scoperto.</li>
+</ol>
+
+<footer>
+Archiviato in <code>docs/project-plan-review-2026-08-25.md</code>
+(sorgente), <code>.html</code> e <code>.docx</code> (copie derivate) —
+kickstart-berlin, 25 agosto 2026.
+</footer>
+
+</main>
+</body>
+</html>
