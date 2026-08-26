@@ -32,10 +32,10 @@ dall'operatore quando l'ambiente è disponibile; stato aggiornato via PR.
 | 3 | Preparazione storage su bare-metal reale | Boot autoinstall su Z8 | Z8 disponibile | **Confermato (indiretto)** — 2026-08-23, HP Z8 G4: nessun errore riportato (Fase 4 ha potuto partire, quindi Fase 3 è completata), ma il Datastore è finito sui moduli Optane PMem invece che sul disco SATA `sda` — vedi "Problemi noti" sotto e `logbook_first_boot.md` (Problema 1) |
 | 4 | Driver NVIDIA + riavvio + `nvidia-smi` + NVIDIA Container Toolkit funzionante | Boot autoinstall su Z8 (GPU reale) | Z8 disponibile | **Confermato** — 2026-08-23, HP Z8 G4 + RTX 3090, driver 595.84/CUDA 13.2. Bug trovato e corretto: `apt-mark hold` falliva su pacchetti "fantasma" restituiti da `dpkg-query -W` non filtrati per stato installato — vedi `logbook_first_boot.md` (Problema 2) |
 | 5 | `docker run --rm --gpus all ...` vede davvero la GPU | Sullo stesso host di Fase 4 | GPU NVIDIA reale attiva | **Confermato** — 2026-08-23, GPU visibile nel container. Nota: il tag `nvidia/cuda:12.4.1-base-ubuntu24.04` citato in `docs/setup.md` risulta ritirato da Docker Hub, verificato invece con `12.6.0-base-ubuntu24.04` |
-| 7 | Compatibilità dell'intero stack col daemon host Vast.ai (Kaalia) | `./postinstall/install-vastai-host.sh` con comando reale da `cloud.vast.ai/host/setup` (valido 1h, generato dall'utente) | Host con rete diretta, stack Fasi 1-6 completato | Da fare — non ancora raggiunto nella sessione del 2026-08-23 (fermata a Fase 10), vedi "Prossimi passi" in `logbook_first_boot.md` |
+| 7 | Compatibilità dell'intero stack col daemon host Vast.ai (Kaalia) | `./postinstall/install-vastai-host.sh` con comando reale da `cloud.vast.ai/host/setup` (valido 1h, generato dall'utente) | Host con rete diretta, stack Fasi 1-6 completato | **Confermato** — 2026-08-23/24, HP Z8 G4: macchina `berlin-3eie` listata con successo, machine ID `148447`. 4 bug trovati nell'installer ufficiale Vast.ai stesso (non nel nostro wrapper), **causati dalla nostra architettura ESX-style pre-esistente** (`/var/lib/docker` symlink, `daemon.json` già scritto) più uno di contesa lock `dpkg` — vedi `logbook-fase7.md` e `CLAUDE.md` direttiva 10. Preflight/postflight automatizzati in `install-vastai-host.sh` (PR #30) ma **non ancora verificati end-to-end come blocco unico** — solo i singoli fix manuali confermati uno per uno |
 | 8 | Campo `nvidia_gpu` popolato con dati reali | `phase8_hardware_info()` su host con GPU reale | GPU NVIDIA reale attiva | **Confermato** — 2026-08-23, `nvidia_gpu` = "NVIDIA GeForce RTX 3090, 24576 MiB, 595.84" |
-| 10 | Installer CLI reale (`vast.ai/install.sh`): `vastai` su PATH, `vastai set api-key` + `vastai show user` | `phase10_vastai_cli()` su host con accesso di rete a `vast.ai` | Rete diretta verso `vast.ai` | **Confermato** — 2026-08-23, `vastai 1.5.5` installato. Due bug trovati e corretti: `$HOME` non definita nell'ambiente del servizio systemd (installer falliva), e permessi `/root` (700) bloccavano l'esecuzione da utente `admin` senza sudo — vedi `logbook_first_boot.md` (Problemi 3 e 4). Autenticazione (`vastai set api-key`/`show user`) non ancora eseguita |
-| 11 | Self-test ufficiale Vast.ai su una macchina realmente listata | `./postinstall/vastai-self-test.sh --machine-id <ID>` | Fase 7 completata con listing riuscito (`machine_id` reale) + Fase 10 completata (CLI autenticata) | Da fare — blocca su Fase 7 |
+| 10 | Installer CLI reale (`vast.ai/install.sh`): `vastai` su PATH, `vastai set api-key` + `vastai show user` | `phase10_vastai_cli()` su host con accesso di rete a `vast.ai` | Rete diretta verso `vast.ai` | **Confermato** — 2026-08-23, `vastai 1.5.5` installato e **autenticato** (`vastai set api-key`/`vastai show user` verificati). Due bug trovati e corretti: `$HOME` non definita nell'ambiente del servizio systemd (installer falliva), e permessi `/root` (700) bloccavano l'esecuzione da utente `admin` senza sudo — vedi `logbook_first_boot.md` (Problemi 3 e 4) |
+| 11 | Self-test ufficiale Vast.ai su una macchina realmente listata | `./postinstall/vastai-self-test.sh --machine-id <ID>` | Fase 7 completata con listing riuscito (`machine_id` reale) + Fase 10 completata (CLI autenticata) | **Eseguito, arrivato ai controlli reali** — 2026-08-23/24, `machine_id` 148447: fallisce su 3 requisiti oggettivi di questa rete (reliability, download, upload — non uno stack/software issue, vedi sotto), e con `--ignore-requirements` si sblocca fino a un **403 persistente identificato come blocco anti-self-rent per design di Vast.ai** (l'host_id coincide con l'account che tenta il noleggio) — non risolvibile da questo repo, serve supporto Vast.ai. Vedi `logbook-fase11.md` per l'indagine completa. Nessun errore di configurazione/permessi lato nostro stack |
 
 Già confermato su hardware reale (non più da ripetere, vedi il logbook
 della fase per il dettaglio): Fase 2 (partizionamento, HP Z8 G4 + VM
@@ -43,19 +43,26 @@ Hyper-V Gen2), Fase 6 (regole `ufw` scritte correttamente — installato
 ma inattivo sul nodo Z8 del 23/08, comportamento voluto: non tocca la
 postura firewall esistente).
 
-## Problemi noti (non bloccanti, in attesa di fix)
+## Problemi noti (non bloccanti)
 
-- **Selezione disco non deterministica con moduli Optane PMem —
-  CORRETTO nel repo (2026-08-24)**: `iso/storage-single-disk.yaml`/
+- **Selezione disco con moduli Optane PMem — corretto, non ancora
+  testato con un boot reale.** `iso/storage-single-disk.yaml`/
   `storage-dual-disk.yaml` usavano `match: {}` (curtin: "un disco
-  qualsiasi"), senza esclusione dei device `/dev/pmem*`. Sostituito con
-  un allowlist esplicito per path (mai `/dev/pmem*`) — vedi
-  `logbook_first_boot.md` (Problema 1). **Non ancora verificato con un
-  boot reale su hardware con PMem dopo il fix** (la Z8 attuale è
-  ancora l'installazione pre-fix, root su PMem — reinstall pianificato
-  ma non eseguito in questa sessione).
+  qualsiasi"), che su hardware con Optane installato può selezionare un
+  modulo PMem invece del disco SATA/NVMe atteso. **Fix mergiato**
+  (`develop`, PR #30): allowlist esplicito per path
+  (`nvme*n1`/`sd*`/`vd*`, mai `/dev/pmem*`), più
+  `--disk-serial`/`--datastore-disk-serial` in `build-iso.sh` per
+  pinnare un disco per numero seriale sui nodi con più dischi reali
+  candidabili insieme (es. altri dischi con OS preesistente ancora
+  collegati — scoperto sulla Z8, vedi `logbook_first_boot.md`).
+  Validato solo staticamente (`scripts/validate-autoinstall.py`) — **da
+  confermare al prossimo boot reale da zero**, vedi
+  `docs/collaudo-funzionale.md`, riga Fase 3 sopra (ancora "Confermato
+  (indiretto)" sul vecchio comportamento `match: {}`, da riverificare
+  con questo fix).
 - **Priorità disco di sistema (SATA/SAS prima di NVMe) non coperta da
-  CI**: il default corretto il 2026-08-24 (vedi PR #40) non ha un test
+  CI**: il default corretto il 2026-08-24 (PR #40) non ha un test
   automatico — `scripts/boot-test-qemu.sh` crea solo dischi `virtio`,
   non emula bus NVMe reali in QEMU. Verificato solo staticamente
   (lettura del match spec generato). Richiederebbe estendere il boot
@@ -70,6 +77,9 @@ postura firewall esistente).
   finisce comunque fuori dal Datastore. Fix non ancora implementato nel
   repo, quindi nessun test automatico possibile finché non lo è — vedi
   issue #41 e `logbook-fase7.md`.
+- **Self-test Fase 11 bloccato su un limite esterno a questo repo**: il
+  403 persistente (blocco anti-self-rent Vast.ai) non è risolvibile
+  lato software — vedi riga Fase 11 sopra e `logbook-fase11.md`.
 
 ## Convenzione
 

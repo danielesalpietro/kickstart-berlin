@@ -38,6 +38,9 @@ all'integrazione in [Grastorp](https://github.com/danielesalpietro/grastorp)
 | `docs/usb-boot.md` | Procedura di scrittura ISO su USB e note PXE/iPXE — test manuale di Fase 1. |
 | `logbook-fase1.md` … `logbook-fase8.md`, `logbook-fase10.md`, `logbook-fase11.md` | Diario per fase: decisioni negoziate con l'utente, bug trovati in sandbox e come sono stati corretti, cosa è "Verificato in sandbox" vs "Non verificabile per costruzione", prossimi passi. **Non esiste `logbook-fase9.md`/`fase12`/`fase13`/`fase14`: quelle fasi non sono ancora implementate.** |
 | `logbook_first_boot.md` | Diario **trasversale alle fasi** (non `logbook-faseN.md`) del primo collaudo end-to-end su hardware fisico reale (HP Z8 G4 + RTX 3090, 2026-08-23): bug trovati e corretti in `postinstall/setup.sh` dopo che le fasi erano già "In corso"/confermate solo in sandbox o su VM. Consultalo per capire *perché* certe righe di `setup.sh` hanno commenti che citano un collaudo reale specifico. Log grezzi (`lsblk`/`lscpu`/`lspci`/`nvidia-smi`) in [`first-boot-z8/`](first-boot-z8/). |
+| `logbook-project-plan-review.md` | Diario **trasversale alle fasi** delle Project Plan Review (analisi periodiche cross-cutting su issue/PR/documenti, non legate a una singola fase). Consultalo prima di produrne una nuova, per non ripetere lo stesso incrocio di dati già fatto. |
+| `docs/project-plan-review-YYYY-MM-DD.md` (+ `.html`/`.docx`, copie derivate) | Snapshot dello stato del progetto a una data precisa: stato verificato delle fasi, PR aperte non ancora mergiate, debito tecnico senza fix in corso. Invecchia rapidamente (issue/PR cambiano stato) — usalo per il ragionamento che documenta, non come fonte di verità sullo stato *attuale* (quella resta `README.md`/`docs/collaudo-funzionale.md`). Copie `.html`/`.docx` tenute manualmente in sync con il `.md`, nessun automatismo le collega (stessa disciplina di `docs/setup.md`/`docs/setup.docx`). |
+| `CHANGELOG.md` | Registro sintetico delle modifiche rilevanti a livello di progetto, non un sostituto dei `logbook-faseN.md`. Non esisteva prima del 2026-08-25: le voci partono da lì, non è un riepilogo retroattivo. |
 | `config/autoinstall-defaults.json` | Unica fonte di verità per i default di build (versione Ubuntu, topologia dischi, parametri Datastore, range porte) — i flag CLI di `build-iso.sh` hanno sempre precedenza quando passati. |
 | `postinstall/setup.sh` | Sequenza automatica post-install (systemd oneshot al primo boot): `main()` chiama in ordine le `phaseN_...()` già implementate. Cresce per fase, **un file solo**, non uno script per fase. |
 | `postinstall/install-vastai-host.sh` | Script standalone Fase 7 — **mai** in `main()`, va lanciato a mano dall'operatore. |
@@ -133,6 +136,29 @@ fatto o a reintrodurre problemi già risolti.
    invisibile finché qualcuno non l'ha fatto notare. Se il tuo branch ha
    commit non ancora mergiati, `git rebase origin/develop` (mai
    scartarli) prima di aggiungere altro lavoro o aprire una nuova PR.
+
+10. **Principio di priorità (2026-08-24, con l'utente): in caso di
+    conflitto tra requisiti/limitazioni di Vast.ai e le nostre scelte
+    architetturali, vince Vast.ai — il resto (Grastorp-oriented) si
+    costruisce attorno, senza creare attrito.** "Berlin" (questo nodo)
+    va usato sia come host Vast.ai sia per altri scopi: quando
+    l'installer/la guida ufficiale Vast.ai si aspetta qualcosa che la
+    nostra architettura non offre nella forma attesa, **il nostro codice
+    si adatta per rendersi "ospitale"**, non il contrario. Precedente
+    concreto: Bug 1/2 del collaudo Fase 7 su Z8 (PR #30,
+    `logbook-fase7.md`) — entrambi causati dalla nostra pre-
+    configurazione (`/var/lib/docker` come symlink ESX-style, `daemon.json`
+    già scritto da `phase3`/`phase4` prima che l'installer Vast.ai
+    giri), non da un difetto dell'installer che si manifesterebbe su un
+    host "stock". Il fix corretto **non è** abbandonare l'architettura
+    ESX-style (resta il prerequisito per Grastorp), ma il pattern
+    preflight/postflight già in `install-vastai-host.sh` (presenta
+    temporaneamente una directory vera invece del symlink, poi ripristina
+    e migra i dati) — quel pattern è il riferimento per casi analoghi
+    futuri, non un caso a sé. Se una fase futura Grastorp-specifica
+    confliggerebbe con un'assunzione di Vast.ai, il criterio è lo
+    stesso: adattare il nostro lato, non aspettarsi che l'installer
+    Vast.ai gestisca la nostra architettura.
 
 ## Vincoli d'ambiente noti (da non riscoprire ogni volta)
 

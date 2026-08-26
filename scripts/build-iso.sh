@@ -206,15 +206,24 @@ STORAGE_FRAGMENT="${REPO_ROOT}/iso/storage-${DISK_TOPOLOGY}-disk.yaml"
 # Valore YAML flow-style per il placeholder __SYSTEM_DISK_MATCH__/
 # __DATASTORE_DISK_MATCH__ nel frammento storage scelto sopra: un match
 # per serial esatto se richiesto esplicitamente (--disk-serial/
-# --datastore-disk-serial), altrimenti l'allowlist generico per path
-# (nvme*/sd*/vd*, esclude sempre i moduli PMem) - vedi commenti in
-# iso/storage-single-disk.yaml e iso/storage-dual-disk.yaml.
+# --datastore-disk-serial), altrimenti un allowlist generico per path
+# (esclude sempre i moduli PMem, mai in nessuna delle due liste) - vedi
+# commenti in iso/storage-single-disk.yaml e iso/storage-dual-disk.yaml.
+#
+# Ordini DIVERSI apposta fra le due liste (decisione 2026-08-24, con
+# l'utente, dopo il collaudo reale sulla Z8): il disco di sistema (boot)
+# preferisce SATA/SAS/virtio, NVMe solo come ultima risorsa se non ce ne
+# sono - riservare l'NVMe (piu' prezioso, piu' performante) al Datastore
+# invece di "sprecarlo" sul boot. Il Datastore fa l'opposto: preferisce
+# NVMe (i container ne beneficiano piu' del boot loader), SATA/SAS come
+# fallback. Prima di questa decisione entrambe le liste mettevano NVMe
+# per primo indistintamente.
 if [[ -n "$DISK_SERIAL" ]]; then
   SYSTEM_DISK_MATCH="{serial: \"${DISK_SERIAL}\"}"
 elif [[ "$DISK_TOPOLOGY" == "dual" ]]; then
-  SYSTEM_DISK_MATCH='[{path: /dev/nvme*n1, size: smallest}, {path: /dev/sd*, size: smallest}, {path: /dev/vd*, size: smallest}]'
+  SYSTEM_DISK_MATCH='[{path: /dev/sd*, size: smallest}, {path: /dev/vd*, size: smallest}, {path: /dev/nvme*n1, size: smallest}]'
 else
-  SYSTEM_DISK_MATCH='[{path: /dev/nvme*n1}, {path: /dev/sd*}, {path: /dev/vd*}]'
+  SYSTEM_DISK_MATCH='[{path: /dev/sd*}, {path: /dev/vd*}, {path: /dev/nvme*n1}]'
 fi
 
 if [[ -n "$DATASTORE_DISK_SERIAL" ]]; then
