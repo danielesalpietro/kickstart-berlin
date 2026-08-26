@@ -1,12 +1,18 @@
 # kickstart-berlin
 
+**Prima release pubblica**: [`v0.1.0-beta.1`](https://github.com/danielesalpietro/kickstart-berlin/releases/tag/v0.1.0-beta.1)
+(beta, 2026-08-26) — vedi la pagina
+[Releases](https://github.com/danielesalpietro/kickstart-berlin/releases)
+per changelog e note di rilascio complete. Software in sviluppo attivo,
+non ancora pensato per un uso in produzione.
+
 Automazione dell'installazione **from-scratch** di un nodo GPU: dalla ISO di
 boot fino a un host pronto (OS, driver NVIDIA, Docker, rete, benchmark
 hardware). Base derivata dal flusso di setup host di **Vast.ai**, propedeutica
 all'integrazione in [Grastorp](https://github.com/danielesalpietro/grastorp).
 
 > Stato: **early stage**, ma con la prima conferma end-to-end su hardware
-> fisico reale (HP Z8 G4 + RTX 3090, 2026-08-23/24) per **tutte** le fasi
+> fisico reale (HP Z8 G4 + RTX 3090, 2026-08-23/26) per **tutte** le fasi
 > implementate (1-8, 10-11) — vedi [`logbook_first_boot.md`](logbook_first_boot.md),
 > [`logbook-fase7.md`](logbook-fase7.md) e [`logbook-fase11.md`](logbook-fase11.md)
 > per il diario completo del collaudo (daemon Vast.ai installato, macchina
@@ -16,9 +22,11 @@ all'integrazione in [Grastorp](https://github.com/danielesalpietro/grastorp).
 > repo**: il self-test Fase 11 si blocca su un 403 identificato come
 > anti-self-rent per design di Vast.ai (serve supporto Vast.ai), e la
 > reliability/banda di questa rete specifica non soddisfa ancora i
-> requisiti minimi. Il fix per la selezione disco su hardware con moduli
-> Optane PMem è mergiato ma non ancora confermato con un boot reale — vedi
-> `docs/collaudo-funzionale.md`.
+> requisiti minimi. Due fix mergiati ma **non ancora confermati con un
+> boot reale da zero** (nessuna GPU disponibile per riverificarli in
+> questa sessione): la selezione disco su hardware con moduli Optane
+> PMem, e il path di storage di `containerd` sul Datastore (issue #41) —
+> vedi `docs/collaudo-funzionale.md`.
 
 ## Perché
 
@@ -472,6 +480,12 @@ invece di solo mostrarlo.)*
 
 ## Riferimenti
 
+- [Releases](https://github.com/danielesalpietro/kickstart-berlin/releases) —
+  changelog e note di rilascio per ogni versione taggata, a partire da
+  [`v0.1.0-beta.1`](https://github.com/danielesalpietro/kickstart-berlin/releases/tag/v0.1.0-beta.1)
+  (prima beta pubblica, 2026-08-26). `CHANGELOG.md` traccia le modifiche
+  a livello di progetto giorno per giorno; le Release ne sono uno
+  snapshot taggato e installabile.
 - [`docs/project-plan-review-2026-08-25.md`](docs/project-plan-review-2026-08-25.md)
   (copie derivate [`.html`](docs/project-plan-review-2026-08-25.html)/
   [`.docx`](docs/project-plan-review-2026-08-25.docx)) —
