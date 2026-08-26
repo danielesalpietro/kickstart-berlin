@@ -15,7 +15,7 @@ hardware GPU né un account Vast.ai reale.
 |---|---|---|
 | 1 | Sintassi/struttura di `iso/user-data` (autoinstall) | `scripts/validate-autoinstall.py`, job `validate-autoinstall` in CI, ogni push/PR |
 | 2 | Sintassi shell di tutti gli script (`scripts/*.sh`, `postinstall/*.sh`) | `shellcheck`, stesso job |
-| 3 | Build ISO reale + boot QEMU/KVM completo, login SSH, mount Datastore, topologie disco singolo/doppio | `scripts/boot-test-qemu.sh`, job `build-and-boot-test` in CI (push a `develop`/`main`, o `workflow_dispatch` con `run_integration: true`) |
+| 3 | Build ISO reale + boot QEMU/KVM completo, login SSH, mount Datastore, topologie disco singolo/doppio, `admin` nel gruppo `docker` (regression test fix #34) | `scripts/boot-test-qemu.sh`, job `build-and-boot-test` in CI (push a `develop`/`main`, o `workflow_dispatch` con `run_integration: true`) |
 
 Non coperto qui: qualunque cosa dipenda da una GPU NVIDIA fisica, da un
 account Vast.ai reale, o da hardware bare-metal — vedi sotto.
@@ -51,15 +51,32 @@ postura firewall esistente).
   qualsiasi"), che su hardware con Optane installato può selezionare un
   modulo PMem invece del disco SATA/NVMe atteso. **Fix mergiato**
   (`develop`, PR #30): allowlist esplicito per path
-  (`nvme*n1`/`sd*`/`vd*`), più `--disk-serial`/`--datastore-disk-serial`
-  in `build-iso.sh` per pinnare un disco per numero seriale sui nodi con
-  più dischi reali candidabili insieme (es. altri dischi con OS
-  preesistente ancora collegati — scoperto sulla Z8, vedi
-  `logbook_first_boot.md`). Validato solo staticamente
-  (`scripts/validate-autoinstall.py`) — **da confermare al prossimo
-  boot reale da zero**, vedi `docs/collaudo-funzionale.md`, riga Fase 3
-  sopra (ancora "Confermato (indiretto)" sul vecchio comportamento
-  `match: {}`, da riverificare con questo fix).
+  (`nvme*n1`/`sd*`/`vd*`, mai `/dev/pmem*`), più
+  `--disk-serial`/`--datastore-disk-serial` in `build-iso.sh` per
+  pinnare un disco per numero seriale sui nodi con più dischi reali
+  candidabili insieme (es. altri dischi con OS preesistente ancora
+  collegati — scoperto sulla Z8, vedi `logbook_first_boot.md`).
+  Validato solo staticamente (`scripts/validate-autoinstall.py`) — **da
+  confermare al prossimo boot reale da zero**, vedi
+  `docs/collaudo-funzionale.md`, riga Fase 3 sopra (ancora "Confermato
+  (indiretto)" sul vecchio comportamento `match: {}`, da riverificare
+  con questo fix).
+- **Priorità disco di sistema (SATA/SAS prima di NVMe) non coperta da
+  CI**: il default corretto il 2026-08-24 (PR #40) non ha un test
+  automatico — `scripts/boot-test-qemu.sh` crea solo dischi `virtio`,
+  non emula bus NVMe reali in QEMU. Verificato solo staticamente
+  (lettura del match spec generato). Richiederebbe estendere il boot
+  test con dischi di tipo diverso (`-device nvme` di QEMU) per
+  diventare un test automatico reale — non fatto, scope più grande di
+  una singola verifica.
+- **`containerd` root path mai gestito dall'automazione (issue #41)**:
+  `phase3_docker_storage()`/`install-vastai-host.sh` correggono solo
+  `data-root` in `/etc/docker/daemon.json`, mai `root` in
+  `/etc/containerd/config.toml` — scoperto sul collaudo reale Z8
+  (2026-08-24): la maggior parte dei dati Docker (i layer immagine)
+  finisce comunque fuori dal Datastore. Fix non ancora implementato nel
+  repo, quindi nessun test automatico possibile finché non lo è — vedi
+  issue #41 e `logbook-fase7.md`.
 - **Self-test Fase 11 bloccato su un limite esterno a questo repo**: il
   403 persistente (blocco anti-self-rent Vast.ai) non è risolvibile
   lato software — vedi riga Fase 11 sopra e `logbook-fase11.md`.

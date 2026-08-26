@@ -118,3 +118,24 @@ reale (Z8, dal 23/08, o istanza GPU cloud dedicata).
       in `docs/setup.md`).
 - [x] Aprire la PR — fatto (PR #28, `claude/postinstall-firstboot-fixes`,
       mergiata in `develop`).
+
+## 2026-08-24 — Bug trovato sul collaudo reale: admin non nel gruppo docker (issue #34)
+
+`phase5_docker()` installava Docker e configurava il runtime NVIDIA, ma
+non aggiungeva mai `admin` (unico account del nodo) al gruppo `docker`
+— ogni comando `docker` senza `sudo` falliva con "permission denied".
+Non emerso nei collaudi precedenti (VM Azure) perché lì i test erano
+eseguiti con `sudo docker` esplicito, non verificando l'uso senza sudo
+come farebbe un operatore reale.
+
+**Fix** (PR #38): `usermod -aG docker admin` (idempotente) in coda a
+`phase5_docker()`. **Regression test aggiunto** in
+`scripts/boot-test-qemu.sh` (stesso PR): dopo la verifica del
+post-install esistente, controlla `id -nG admin` include `docker` —
+gira automaticamente ad ogni build-and-boot-test in CI, non serve più
+scoprirlo di nuovo su hardware reale a ogni collaudo.
+
+Applicato anche live sulla Z8 già installata (`usermod -aG docker
+admin` via SSH, verificato da una sessione nuova) — il fix in
+`setup.sh` vale solo per le installazioni future, non è retroattivo su
+un nodo già esistente. Vedi `logbook_first_boot.md`.
