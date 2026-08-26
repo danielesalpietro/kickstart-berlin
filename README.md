@@ -378,26 +378,97 @@ richiesta esplicita, non ancora implementata.)*
   blocco già annotato in `logbook-fase7.md`). Dettaglio in
   [`logbook-fase11.md`](logbook-fase11.md).
 
-## Console status su tty1 (issue #27)
+## Console status su tty1 + banner SSH (issue #27)
 
 *(Non una delle 14 fasi mappate da Vast.ai — Vast.ai non ha un
 equivalente: aggiunta originale, ispirata alla DCUI di VMware ESXi.)*
 
-- `postinstall/console-status.sh` + `postinstall/kickstart-berlin-console-status.service`,
-  installati e abilitati da `console_status_setup()` in
-  `postinstall/setup.sh` (automatica, nessun segreto coinvolto — stesso
-  criterio di Fase 10). Rimpiazza il prompt di login su tty1 (comunque
-  inutilizzabile: nessuna password valida per design) con una schermata
-  di sola lettura, refresh ogni 30s: hostname, versione Ubuntu/kernel,
-  IP delle interfacce reali (esclusi `lo`/`docker0`/bridge Docker),
-  stato Datastore (montato/spazio libero), driver/GPU NVIDIA, comando
-  SSH pronto da copiare.
+- `postinstall/lib-node-status.sh` (libreria condivisa, bash) +
+  `postinstall/console-status.py` + `postinstall/motd-vastai-status` +
+  `postinstall/kickstart-berlin-console-status.service`, installati e
+  abilitati da `console_status_setup()` in `postinstall/setup.sh`
+  (automatica, nessun segreto coinvolto — stesso criterio di Fase 10).
+  Due presentazioni della stessa informazione (stessa raccolta dati in
+  `lib-node-status.sh`, chiamata via `subprocess` da Python invece che
+  duplicata):
+  - **tty1**: rimpiazza il prompt di login (comunque inutilizzabile:
+    nessuna password valida per design) con una schermata di sola
+    lettura in stile DCUI VMware ESXi (Python + `curses`: barra
+    header/footer gialla su corpo nero), refresh ogni 30s.
+  - **Banner SSH al login**: le stesse informazioni, installate come
+    `/etc/update-motd.d/50-kickstart-berlin` (eseguito da Ubuntu ad
+    ogni login SSH via `pam_motd`, integrato col MOTD standard).
+  - Contenuto: hostname, versione Ubuntu/kernel, IP delle interfacce
+    reali (esclusi `lo`/`docker0`/bridge Docker), gateway di default,
+    DNS, modello CPU + carico %, disco di sistema (`/`) e Datastore/
+    Docker separati (con avviso esplicito oltre il 90% di utilizzo —
+    riempire il disco di sistema blocca l'intero nodo, riempire il
+    Datastore blocca solo l'avvio di nuovi container), driver/GPU
+    NVIDIA, comando SSH pronto da copiare — più, solo sui nodi dove
+    Fase 7 è stata eseguita: stato dei servizi systemd del daemon
+    Vast.ai e un riepilogo della macchina lato Vast.ai (affidabilità,
+    verifica, listing/prezzo, manutenzione attiva), che replica le
+    informazioni chiave del portale `cloud.vast.ai/host/machines`.
 - **Nessun accesso locale in più**: `StandardInput=null` nella unit
-  systemd, nessun input gestito dallo script. La shell classica resta
-  disponibile sui terminali secondari (Alt+F2 … Alt+F6, non toccati).
+  systemd (variante tty1), nessun input gestito dagli script. La shell
+  classica resta disponibile sui terminali secondari (Alt+F2 … Alt+F6,
+  non toccati).
 - Verificato end-to-end su hardware reale (Z8): dump del framebuffer
-  della console (`/dev/vcs1`/`/dev/vcsu1`) usato per confermare il
-  contenuto renderizzato senza bisogno di una foto dello schermo fisico.
+  della console (`/dev/vcs1`/`/dev/vcsu1`) per la variante tty1 senza
+  bisogno di una foto dello schermo fisico, `run-parts
+  /etc/update-motd.d/` (lo stesso meccanismo usato dal sistema al
+  login) per la variante banner SSH.
+
+## Node management via SSH (issue #33)
+
+*(Non una delle 14 fasi mappate da Vast.ai — aggiunta originale, stesso
+stile DCUI ESXi di issue #27, ma questa **modifica** lo stato del nodo
+invece di solo mostrarlo.)*
+
+- `postinstall/node-manage.py`: menu ad albero interattivo (Su/Giù/
+  Invio/Esc/Q), va lanciato **a mano** dall'operatore via SSH
+  interattivo (`sudo /opt/kickstart-berlin/node-manage.py`) — **mai**
+  in `setup.sh`/`main()`, stesso motivo di Fase 7/11: richiede una TTY
+  reale (`netplan try`, i pager dei log) e può modificare stato reale
+  del sistema, non solo mostrarlo.
+- **Non è un nuovo vettore di accesso**: precisazione esplicita
+  dell'utente su issue #33 — l'operatore ha già pieno accesso via
+  SSH+sudo, questo è solo un'interfaccia più comoda sopra un accesso
+  che ha già per intero. Il rischio gestito è "azioni distruttive rese
+  troppo facili da un menu": ogni azione che cambia stato reale mostra
+  prima la situazione attuale (`lib-node-status.sh`, stesso principio
+  di issue #27) e chiede conferma esplicita (default "no").
+- Tre sezioni:
+  - **Management Network**: stato rete; IP Configuration (DHCP o
+    statico "su tutto lo stack IP" — indirizzo/CIDR, gateway, DNS,
+    validati con il modulo `ipaddress` di Python prima di scrivere
+    qualunque file); riavvio servizi di rete; test di connettività.
+    Lo statico scrive un file di override dedicato
+    (`/etc/netplan/90-kickstart-berlin-override.yaml`, mai il file
+    generato da Subiquity all'install) e applica con **`netplan try
+    --timeout 30`** — meccanismo nativo di Netplan pensato apposta per
+    questo: ripristina automaticamente la configurazione precedente se
+    non confermata entro il timeout, evita di reinventare un rollback
+    a mano per un'azione che potrebbe altrimenti bloccare fuori
+    dall'unico accesso al nodo (SSH).
+  - **POD**: stato/riavvio dei servizi Vast.ai (con stato mostrato
+    prima e dopo); diagnostica come wrapper sulla CLI `vastai` reale
+    (`show machine`, `list machine --price_gpu ...`, `unlist machine`,
+    self-test — quest'ultimo riusa `vastai-self-test.sh`, Fase 11,
+    invece di duplicarne la logica), sempre con `HOME=/home/admin`
+    esplicito (stesso fix di issue #27: l'API key vive lì, non sotto
+    root).
+  - **View System Log**: log del postinstall (`journalctl -u
+    kickstart-berlin-postinstall.service`), log del daemon POD
+    (`/var/lib/vastai_kaalia/*.log` via `less`), log di sistema
+    (`journalctl -xe`) — pager reali, non reimplementati dentro curses.
+- Interfaccia in **inglese** (convenzione esplicita dell'utente per le
+  interfacce di admin di questo repo, a differenza dei commenti nel
+  codice e della documentazione, in italiano).
+- Ogni azione sospende curses e gira come terminale normale
+  (`print`/`input`), invece che dentro una finestra curses: più
+  semplice/robusto per output di lunghezza non prevedibile, e
+  necessario comunque per `netplan try` e i pager.
 
 ## Riferimenti
 

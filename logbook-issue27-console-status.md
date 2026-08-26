@@ -97,22 +97,245 @@ a 30s per ora, nessuna urgenza di ottimizzare oltre.
 Ridistribuito e riverificato dopo entrambi i fix: output corretto
 (niente `docker0`, trattini ASCII visibili, refresh 30s).
 
+## 2026-08-24 — Estensione: servizi/stato Vast.ai + banner SSH al login
+
+Su richiesta dell'utente, due estensioni:
+
+1. **Stato Vast.ai nella schermata**: sezione aggiuntiva (mostrata solo
+   se `/var/lib/vastai_kaalia` esiste, cioè solo sui nodi dove Fase 7 è
+   stata eseguita — omessa del tutto altrove, non solo vuota) con stato
+   dei servizi systemd del daemon (`vastai.service`,
+   `vast_metrics.service`, locale, nessuna rete) e un riepilogo della
+   macchina lato Vast.ai (affidabilità, verifica, listing/prezzo,
+   manutenzione attiva) che replica le informazioni chiave del portale
+   `cloud.vast.ai/host/machines` — questa parte richiede la CLI
+   `vastai` autenticata (Fase 10) e rete, con `timeout 5` per non far
+   dipendere il refresh dell'intera schermata dalla latenza di rete.
+2. **Banner SSH al login**: le stesse informazioni, mostrate anche alla
+   connessione SSH (non solo su tty1) — "le stesse informazioni le
+   riporterei come banner alla prima connessione via ssh, può tornare
+   utile". Refactoring: la logica di raccolta condivisa è stata estratta
+   in `postinstall/lib-node-status.sh` (sorgentato sia da
+   `console-status.sh` sia dal nuovo `postinstall/motd-vastai-status`,
+   installato come `/etc/update-motd.d/50-kickstart-berlin` — Ubuntu
+   esegue ogni script lì dentro ad ogni login SSH via `pam_motd`).
+
+### Due bug reali trovati nello stesso giro di collaudo
+
+1. **Sintassi f-string non valida**: `print(f"... {d.get(\"id\", \"?\")} ...")`
+   — un backslash per escapare virgolette **dentro** la parte-espressione
+   di un f-string non è mai valido in Python (nessuna versione, non
+   collegato al rilassamento delle f-string di PEP 701/3.12 come
+   inizialmente sospettato — quello riguarda solo il riuso dello stesso
+   tipo di virgolette, non i backslash). `SyntaxError: unexpected
+   character after line continuation character` al primo test reale.
+   Corretto estraendo `machine_id = d.get("id", "?")` in una variabile
+   separata prima della f-string.
+2. **`/var/lib/vastai_kaalia/machine_id` contiene un hash interno**
+   (64 caratteri esadecimali), non l'ID numerico (`148447`) che
+   `vastai show machine <id>` si aspetta — `vastai show machine <hash>`
+   fallisce silenziosamente (nessun dato). Corretto usando invece
+   `vastai show machines` (senza ID, elenca tutte le macchine
+   dell'account) filtrando per hostname lato Python — più robusto, non
+   dipende dal formato di quel file interno.
+3. **(bug 3, trovato per ultimo) `HOME` non impostata per il servizio
+   systemd**: `kickstart-berlin-console-status.service` gira come root
+   (nessun `User=` nell'unit, per design — vedi commit originale
+   dell'issue), ma l'API key di `vastai` è stata configurata
+   dall'operatore come utente `admin` (unico account del nodo), quindi
+   vive sotto `/home/admin/.config/vastai/`, non `/root/`. Senza
+   `HOME` esplicita, `vastai` come root non trova alcuna
+   autenticazione e la sezione macchina risultava sempre vuota
+   ("dati non disponibili") **anche con l'API key correttamente
+   configurata** — stesso genere di problema già visto in Fase 7,
+   Problema 4 (`vastai` non eseguibile da `admin` senza sudo, causa
+   opposta ma stessa radice: home directory sbagliata). Corretto con
+   `HOME=/home/admin timeout 5 vastai show machines --raw`.
+
+### Verificato end-to-end su hardware reale (Z8, dopo i 3 fix sopra)
+
+- Sezione Vast.ai su tty1: servizi `active`/`active`, macchina
+  `ID 148447  affidabilita 74.1%  unverified  listato: si ($0.15/GPU/h)
+  in uso: 0, MANUTENZIONE attiva (~64h rimanenti)` — quest'ultimo
+  dettaglio (manutenzione) utile di suo, non richiesto esplicitamente
+  ma emerso naturalmente dal JSON di `vastai show machines`.
+- Banner SSH: verificato con `run-parts /etc/update-motd.d/` (lo stesso
+  meccanismo usato realmente dal sistema al login, non un'esecuzione
+  diretta dello script) — integrato correttamente accanto al MOTD
+  standard di Ubuntu (system load, temperatura, uso disco da
+  `50-landscape-sysinfo`). Nota: un `ssh host "comando"` non-interattivo
+  **non** mostra il MOTD per design di SSH/PAM (solo le sessioni di
+  login interattive) — non testabile con lo stesso approccio "one-off"
+  usato altrove in questo repo, da qui la verifica via `run-parts`.
+
+## 2026-08-24 — Restyling tty1 in stile ESXi (curses), da mockup dell'utente
+
+L'utente ha creato `esxi_mockup.py` sul nodo (Python + `curses`: barra
+header/footer gialla su nero, dialog box centrato, stile DCUI reale)
+chiedendo se riutilizzarlo per la schermata tty1 e per futuri setup
+guidati da console. Due percorsi separati (vedi anche issue nuova
+aperta per il secondo, sotto):
+
+**tty1 (questa issue)**: `postinstall/console-status.sh` (bash)
+sostituito da **`postinstall/console-status.py`** (Python +
+`curses`, stile ESXi: barra header/footer gialla, corpo nero). La
+raccolta dati **resta** in `lib-node-status.sh` (bash) — il nuovo
+script Python chiama quelle funzioni via `subprocess` invece di
+duplicarle, unica fonte di verità per la logica. Il banner SSH
+(`motd-vastai-status`) resta testo semplice, invariato: `curses` non
+ha senso lì (un client SSH vede il MOTD come scrollback statico, non
+una TUI viva).
+
+**Verifica tecnica preliminare, prima di scrivere qualunque codice**:
+il requisito "sola lettura" dell'issue era finora garantito due volte
+(la unit systemd con `StandardInput=null` E lo script che non legge
+mai stdin) — `curses` normalmente legge input (`stdscr.getch()`), va
+verificato che **non serva** per farlo funzionare con `stdin=/dev/null`
+prima di eventualmente indebolire quella doppia protezione. Testato
+empiricamente sul nodo reale (`curses.wrapper` con stdin da `/dev/null`,
+stdout sul vero `/dev/tty1`): **fallisce**, ma non per `stdin` — per
+`TERM` non impostata (`setupterm: could not find terminal`, il
+servizio non la esporta). Con `TERM=linux` impostata esplicitamente
+(il terminfo corretto per una console Linux VT) **funziona
+correttamente anche con `stdin=/dev/null`** — curses usa `stdout` per
+tutto ciò che serve in questo caso (rendering + dimensioni terminale),
+non ha mai avuto bisogno di leggere `stdin`. Risultato pratico:
+`StandardInput=null` resta invariato nella unit, `console-status.py`
+non chiama **mai** `stdscr.getch()` in nessun punto (il refresh usa
+`time.sleep()`, non un timeout su lettura input) — difesa in
+profondità originale intatta, garantita ora sia dalla unit sia
+dal codice per costruzione (non chiama la funzione che leggerebbe
+input, non solo "sceglie di ignorarne il risultato").
+
+`kickstart-berlin-console-status.service` aggiornato:
+`ExecStart=/usr/bin/python3 /opt/kickstart-berlin/console-status.py`
+(interprete esplicito, evita di dipendere dal bit eseguibile/shebang —
+`console-status.py` non è più coperto dal `chmod +x *.sh` automatico
+delle late-commands, essendo `.py` non `.sh`).
+
+**Verificato end-to-end su hardware reale (Z8)**: servizio `active
+(running)`, contenuto renderizzato confermato via dump del framebuffer
+(`/dev/vcs1`) — stesso contenuto già verificato per la versione bash
+(inclusa la sezione Vast.ai), nessun crash, header/footer a piena
+larghezza. **Non verificabile da questa sessione**: la resa reale dei
+colori (giallo/nero) — `/dev/vcs1` è un dump testuale, non cattura gli
+attributi colore; serve conferma visiva diretta sullo schermo fisico.
+
+**Nuova issue aperta** per il secondo caso d'uso del mockup (setup
+guidati da console, stile `<F2> Customize System`): salto di scopo
+importante rispetto a una schermata di sola lettura — significherebbe
+dare alla console locale la capacità di *modificare* lo stato del
+sistema, in tensione diretta con la progettazione "solo chiave SSH,
+mai un modo di accesso/azione locale" di CLAUDE.md e di questa stessa
+issue. Non implementato qui, serve una discussione di sicurezza
+dedicata.
+
 ## Stato
 
-Verificato end-to-end su hardware reale (Z8, RTX 3090). Non ancora
+Verificato end-to-end su hardware reale (Z8, RTX 3090), incluse le due
+modalità (tty1, ora in stile ESXi via curses + banner SSH) e la sezione
+Vast.ai. Non ancora
 verificato: comportamento dopo un vero riavvio completo del nodo (il
-collaudo qui ha installato/abilitato la unit su un sistema già avviato,
-non tramite un ciclo autoinstall→boot→postinstall completo con questa
-issue inclusa fin dall'ISO) — il meccanismo (`main()` →
+collaudo qui ha installato/abilitato tty1+MOTD a caldo su un sistema
+già avviato, non tramite un ciclo autoinstall→boot→postinstall completo
+con questa issue inclusa fin dall'ISO) — il meccanismo (`main()` →
 `console_status_setup()`, stesso schema di ogni altra fase) non ha
 ragione strutturale per comportarsi diversamente, ma non è lo stesso
 grado di conferma delle Fasi già passate per un boot reale completo.
 
+## 2026-08-24 — Restyling box + spaziatura, nuovi campi, bug CRLF serio
+
+Feedback dell'utente dopo aver visto il primo screenshot reale: "funzionale, ma
+esteticamente migliorabile" — spaziatura tra le sezioni e un riquadro
+bordato (come nel mockup originale) invece di testo libero su sfondo
+nero pieno.
+
+**Riquadro bordato**: `curses.newwin()` + `.box()` centrato, titolo
+"Stato del nodo" incorporato nel bordo superiore, dimensionato sul
+contenuto reale (`max_content_w`, `len(content_lines)`) entro i limiti
+dello schermo — non fisso. **Bug trovato al primo collaudo**: larghezza
+massima iniziale (96 colonne) troncava a metà parola la riga più lunga
+in pratica ("Macchina Vast.ai", ~120 caratteri con affidabilità +
+verifica + listing + manutenzione tutti sulla stessa riga). Corretto
+alzando il limite a 132 **e** aggiungendo un'ellissi esplicita (`...`
+ASCII, non `…` Unicode — stesso motivo dell'em-dash altrove in questo
+repo, la console reale non renderizza glifi fuori font) per rendere
+visibile un eventuale troncamento residuo invece di tagliare in
+silenzio.
+
+**Nuovi campi**, richiesti esplicitamente dall'utente: gateway di
+default, DNS, modello CPU + carico in percentuale (`load1/core_count`,
+non il load average grezzo), disco di sistema (`/`) **separato** dal
+Datastore/Docker — con la distinzione di gravità richiesta
+esplicitamente ("se finisce il disco Docker: niente più container: se
+finisce il disco di sistema: si blocca tutto"). Aggiunta una soglia di
+avviso condivisa (`DISK_WARN_PCENT=90`) su entrambi i dischi, testo
+ASCII semplice ("ATTENZIONE: ...", nessun simbolo/emoji, stesso motivo
+di sopra). Tutte le nuove funzioni in `lib-node-status.sh` (condivise
+tra tty1 e banner SSH, come il resto): `_gateway_line`, `_dns_line`
+(prova `resolvectl dns` prima, fallback su `/etc/resolv.conf`),
+`_cpu_line`, `_system_disk_line`; `_datastore_line` esistente arricchita
+con % di utilizzo e lo stesso avviso.
+
+### Bug serio trovato durante il collaudo: CRLF su un file senza estensione
+
+`motd-vastai-status` (nessuna estensione `.sh`/`.py`) falliva sul nodo
+con `set: pipefail: invalid option name` — **terminatori di riga CRLF**
+(Windows), non un errore di sintassi bash. Causa: `.gitattributes`
+forzava `eol=lf` solo per `*.sh`/`*.py`/`*.yml`/`*.yaml` e due path
+espliciti (`iso/user-data`, `iso/meta-data`) — `motd-vastai-status` non
+rientrava in nessuna di queste regole, quindi su un checkout Windows
+con `core.autocrlf=true` (il caso di questa intera sessione) veniva
+estratto con CRLF. **Non solo un problema di test**: se l'ISO venisse
+mai buildata direttamente da un checkout Windows (come in questa
+sessione) invece che da un clone Linux pulito, lo stesso bug
+finirebbe nell'ISO reale.
+
+Corretto aggiungendo regole esplicite per path in `.gitattributes`
+(file senza estensione riconosciuta: `postinstall/motd-vastai-status`,
+`postinstall/kickstart-berlin-postinstall.service`,
+`postinstall/kickstart-berlin-console-status.service`).
+
+**Complicazione trovata nel fix stesso**: `git add --renormalize .`
+aggiorna l'INDICE (cosa verrà committato) ma **non riscrive il file nel
+working tree** — verificato con `file`/`od -c` che il file su disco
+restava CRLF anche dopo. Anche `git checkout -- <path>` (che dovrebbe
+ripristinare il working tree dall'indice) non ha riscritto i byte per
+questo file specifico, nonostante `git check-attr` confermasse
+correttamente `eol: lf` come attributo effettivo — causa esatta non
+isolata (sospetto: git-for-windows considera il file "già aggiornato"
+per un confronto di contenuto che non tiene conto della sola differenza
+di line-ending in questo caso particolare, non riproducibile in modo
+affidabile per capirlo a fondo). **Workaround verificato**: riscrivere
+il file da capo con lo strumento di editing (bypassa interamente la
+pipeline di smudge/clean di git) risolve in modo affidabile — usato per
+sistemare `motd-vastai-status` in questa sessione. Verificato con
+`file`/`od -c` che il risultato sia pulito, poi ritestato con successo
+sul nodo reale via trasferimento diretto (`cat file | ssh ... "cat >
+..."`, bypassando anche `scp` per escluderlo come possibile causa).
+
+**Verificato end-to-end su hardware reale (Z8)**, tutte le modifiche
+sopra insieme: tty1 (dump framebuffer) e banner SSH (`run-parts
+/etc/update-motd.d/`) entrambi mostrano tutti i nuovi campi
+correttamente, nessun troncamento, nessun errore di sintassi.
+
 ## Prossimi passi
 
 - [ ] Collaudo di un boot completo da ISO ricostruita con questa issue
-      inclusa (non solo deploy a caldo su un sistema già installato).
+      inclusa (non solo deploy a caldo su un sistema già installato) —
+      **ora particolarmente rilevante** per confermare che il fix
+      `.gitattributes` funzioni davvero end-to-end in una build reale,
+      non solo verificato a mano file per file in questa sessione.
 - [ ] Valutare se aggiungere alla schermata anche lo stato `ufw`
       (attivo/inattivo, porte aperte) — non incluso nella prima
       versione, l'issue originale non lo richiedeva esplicitamente tra
       le "informazioni minime".
+- [ ] Conferma visiva diretta dei colori (giallo/nero) sullo schermo
+      fisico della console-status.py — non verificabile da questa
+      sessione (solo dump testuale via `/dev/vcs1`, niente attributi
+      colore).
+- [ ] Capire la causa esatta per cui `git checkout --`/`git add
+      --renormalize` non riscrivevano il working tree per
+      `motd-vastai-status` in questa sessione (git-for-windows +
+      OneDrive?) — non bloccante (workaround affidabile trovato), ma
+      utile saperlo per non ripetere la stessa indagine in futuro.
