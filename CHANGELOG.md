@@ -18,3 +18,19 @@ riepilogo retroattivo dell'intera storia del repo.
   issue #33, e propone di riclassificare la Fase 11 come "bloccata
   esternamente" (design anti-self-rent Vast.ai) invece che "da fare".
   Vedi `logbook-project-plan-review.md` per il diario della sessione.
+
+## 2026-08-26
+
+- Mergiate tutte le 6 PR segnalate dalla Project Plan Review come pronte
+  (#32, #38, #39, #40, #42, #43) — riallineamento documentale (`CLAUDE.md`
+  direttiva 10, `README.md`, `docs/collaudo-funzionale.md`), fix gruppo
+  `docker` (#34), priorità disco SATA/NVMe, menu di gestione del nodo via
+  SSH (issue #33, checkpoint di governance chiuso con conferma esplicita
+  dell'utente).
+- **Fix strutturale del gap `containerd`** (issue #41, PR #46): il path
+  di storage di `containerd` ora segue il Datastore come `data-root` di
+  Docker — prima di questo fix la maggior parte dei dati Docker reali
+  (i layer immagine) finiva fuori dal Datastore nonostante `daemon.json`
+  fosse corretto. Nuovo regression test in CI. Vedi `logbook-fase7.md`.
+- **Prima release pubblica: [`v0.1.0-beta.1`](https://github.com/danielesalpietro/kickstart-berlin/releases/tag/v0.1.0-beta.1)**
+  (pre-release, tag su `develop`) — vedi `logbook-releases.md`.

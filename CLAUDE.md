@@ -28,6 +28,11 @@ all'integrazione in [Grastorp](https://github.com/danielesalpietro/grastorp)
 4. Se il lavoro tocca GitHub issues, ricorda: **i numeri di fase
    corrispondono 1:1 ai numeri di issue** (`#1`…`#14`) nel repo
    `danielesalpietro/kickstart-berlin`.
+5. Se il lavoro tocca una release: **`develop` non è la stessa cosa
+   dell'ultima release pubblicata** (`develop` può essere già avanti).
+   Controlla [Releases](https://github.com/danielesalpietro/kickstart-berlin/releases)
+   per l'ultimo tag pubblico e `logbook-releases.md` per il contesto di
+   come/perché si è arrivati a quel tag.
 
 ## Mappa dei documenti
 
@@ -41,6 +46,7 @@ all'integrazione in [Grastorp](https://github.com/danielesalpietro/grastorp)
 | `logbook-project-plan-review.md` | Diario **trasversale alle fasi** delle Project Plan Review (analisi periodiche cross-cutting su issue/PR/documenti, non legate a una singola fase). Consultalo prima di produrne una nuova, per non ripetere lo stesso incrocio di dati già fatto. |
 | `docs/project-plan-review-YYYY-MM-DD.md` (+ `.html`/`.docx`, copie derivate) | Snapshot dello stato del progetto a una data precisa: stato verificato delle fasi, PR aperte non ancora mergiate, debito tecnico senza fix in corso. Invecchia rapidamente (issue/PR cambiano stato) — usalo per il ragionamento che documenta, non come fonte di verità sullo stato *attuale* (quella resta `README.md`/`docs/collaudo-funzionale.md`). Copie `.html`/`.docx` tenute manualmente in sync con il `.md`, nessun automatismo le collega (stessa disciplina di `docs/setup.md`/`docs/setup.docx`). |
 | `CHANGELOG.md` | Registro sintetico delle modifiche rilevanti a livello di progetto, non un sostituto dei `logbook-faseN.md`. Non esisteva prima del 2026-08-25: le voci partono da lì, non è un riepilogo retroattivo. |
+| `logbook-releases.md` | Diario **trasversale alle fasi** delle versioni taggate/pubblicate ([GitHub Releases](https://github.com/danielesalpietro/kickstart-berlin/releases)): non il changelog delle modifiche (quello resta `CHANGELOG.md`), ma *come* e *perché* si è arrivati a taggare in quel momento — cosa era pronto, cosa incluso/escluso. Consultalo prima di preparare una nuova release, per non ripetere la stessa analisi pre-release da zero. Non esisteva prima della prima release (`v0.1.0-beta.1`, 2026-08-26). |
 | `config/autoinstall-defaults.json` | Unica fonte di verità per i default di build (versione Ubuntu, topologia dischi, parametri Datastore, range porte) — i flag CLI di `build-iso.sh` hanno sempre precedenza quando passati. |
 | `postinstall/setup.sh` | Sequenza automatica post-install (systemd oneshot al primo boot): `main()` chiama in ordine le `phaseN_...()` già implementate. Cresce per fase, **un file solo**, non uno script per fase. |
 | `postinstall/install-vastai-host.sh` | Script standalone Fase 7 — **mai** in `main()`, va lanciato a mano dall'operatore. |
