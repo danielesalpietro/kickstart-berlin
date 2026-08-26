@@ -81,16 +81,16 @@ equivalente per un nodo Grastorp.
 | # | Fase (Vast.ai) | Cosa fa Vast.ai | Equivalente kickstart-berlin / Grastorp | Stato |
 |---|---|---|---|---|
 | 1 | Sistema operativo | Ubuntu Server 22.04/24.04 da ISO ufficiale | Stessa base OS, via `autoinstall` invece di installazione manuale interattiva | **Fatto** ([#1](https://github.com/danielesalpietro/kickstart-berlin/issues/1)) |
-| 2 | Partizionamento disco | `/` ext4 (~100GB) + resto disco separato (xfs, non montato) | Stesso schema: partizione di sistema + partizione dedicata allo storage (Datastore Grastorp) | **In corso** ([#2](https://github.com/danielesalpietro/kickstart-berlin/issues/2)) |
-| 3 | Preparazione storage | Estensione LVM, rimozione loopback Docker, dati Docker sul filesystem principale | Adattato: nessuna estensione LVM (non prevista dalla guida ufficiale Vast.ai, seguita strettamente — vedi `logbook-fase3.md`), Docker configurato sul Datastore ESX-style con symlink di compatibilità da `/var/lib/docker` | **In corso** ([#3](https://github.com/danielesalpietro/kickstart-berlin/issues/3)) |
-| 4 | Driver NVIDIA + Container Toolkit | Driver pinnato (es. 535) + NVIDIA Container Toolkit da repo ufficiale | Adattato: nessuna versione pinnata (non richiesta dalla guida ufficiale Vast.ai, seguita strettamente — vedi `logbook-fase4.md`), driver auto-rilevato via `ubuntu-drivers autoinstall` | **In corso** ([#4](https://github.com/danielesalpietro/kickstart-berlin/issues/4)) |
-| 5 | Docker | Install da `get.docker.com`, config con runtime NVIDIA | Identico | **In corso** ([#5](https://github.com/danielesalpietro/kickstart-berlin/issues/5)) |
-| 6 | Rete | DHCP via Netplan, DNS pubblici, hostname | Identico, propedeutico al rilevamento NIC di Grastorp ([grastorp#11](https://github.com/danielesalpietro/grastorp/issues/11)); range di porte TCP+UDP aperto su ufw se attivo (guida ufficiale Vast.ai) | **In corso** ([#6](https://github.com/danielesalpietro/kickstart-berlin/issues/6)) |
-| 7 | Installazione daemon del provider | Wizard ufficiale Vast.ai (Kaalia daemon) + API key utente | **Riordinato**: si valida prima il nodo come host Vast.ai reale (daemon ufficiale, installato a mano dall'operatore) per confermare la piena compatibilità dello stack — l'evoluzione verso il backend/agent Grastorp resta il passo successivo, non sostituisce più questa fase (vedi `logbook-fase7.md`) | **In corso** ([#7](https://github.com/danielesalpietro/kickstart-berlin/issues/7)) |
-| 8 | Raccolta info hardware | `dmidecode` + permessi sudo dedicati, usato per popolare il "machine info" del marketplace | **Riusato as-is**: stesso meccanismo alla base del node profiling di Grastorp ([grastorp#14](https://github.com/danielesalpietro/grastorp/issues/14)) — permessi sudo dedicati non necessari (l'admin ha già NOPASSWD completo) | **In corso** ([#8](https://github.com/danielesalpietro/kickstart-berlin/issues/8)) |
+| 2 | Partizionamento disco | `/` ext4 (~100GB) + resto disco separato (xfs, non montato) | Stesso schema: partizione di sistema + partizione dedicata allo storage (Datastore Grastorp) | **In corso** ([#2](https://github.com/danielesalpietro/kickstart-berlin/issues/2)) — confermato su hardware reale; fix selezione disco PMem e priorità SATA/NVMe mergiati ma non ancora riverificati con un boot reale da zero |
+| 3 | Preparazione storage | Estensione LVM, rimozione loopback Docker, dati Docker sul filesystem principale | Adattato: nessuna estensione LVM (non prevista dalla guida ufficiale Vast.ai, seguita strettamente — vedi `logbook-fase3.md`), Docker configurato sul Datastore ESX-style con symlink di compatibilità da `/var/lib/docker` | **In corso** ([#3](https://github.com/danielesalpietro/kickstart-berlin/issues/3)) — confermato su hardware reale; fix `containerd` (issue #41) mergiato ma non ancora riverificato su GPU reale |
+| 4 | Driver NVIDIA + Container Toolkit | Driver pinnato (es. 535) + NVIDIA Container Toolkit da repo ufficiale | Adattato: nessuna versione pinnata (non richiesta dalla guida ufficiale Vast.ai, seguita strettamente — vedi `logbook-fase4.md`), driver auto-rilevato via `ubuntu-drivers autoinstall` | **In corso** ([#4](https://github.com/danielesalpietro/kickstart-berlin/issues/4)) — confermato su GPU reale (RTX 3090) |
+| 5 | Docker | Install da `get.docker.com`, config con runtime NVIDIA | Identico | **In corso** ([#5](https://github.com/danielesalpietro/kickstart-berlin/issues/5)) — confermato (`docker run --gpus all`, gruppo `docker` fix #34) |
+| 6 | Rete | DHCP via Netplan, DNS pubblici, hostname | Identico, propedeutico al rilevamento NIC di Grastorp ([grastorp#11](https://github.com/danielesalpietro/grastorp/issues/11)); range di porte TCP+UDP aperto su ufw se attivo (guida ufficiale Vast.ai) | **In corso** ([#6](https://github.com/danielesalpietro/kickstart-berlin/issues/6)) — confermato (regole `ufw` corrette) |
+| 7 | Installazione daemon del provider | Wizard ufficiale Vast.ai (Kaalia daemon) + API key utente | **Riordinato**: si valida prima il nodo come host Vast.ai reale (daemon ufficiale, installato a mano dall'operatore) per confermare la piena compatibilità dello stack — l'evoluzione verso il backend/agent Grastorp resta il passo successivo, non sostituisce più questa fase (vedi `logbook-fase7.md`) | **In corso** ([#7](https://github.com/danielesalpietro/kickstart-berlin/issues/7)) — daemon reale confermato su Z8 (macchina listata, ID `148447`); automazione preflight/postflight non ancora verificata end-to-end come blocco unico |
+| 8 | Raccolta info hardware | `dmidecode` + permessi sudo dedicati, usato per popolare il "machine info" del marketplace | **Riusato as-is**: stesso meccanismo alla base del node profiling di Grastorp ([grastorp#14](https://github.com/danielesalpietro/grastorp/issues/14)) — permessi sudo dedicati non necessari (l'admin ha già NOPASSWD completo) | **In corso** ([#8](https://github.com/danielesalpietro/kickstart-berlin/issues/8)) — confermato, `nvidia_gpu` popolato con dati reali |
 | 9 | Manutenzione | Timer systemd per pulizia oraria container/immagini inutilizzati | Riusabile as-is | Da fare |
 | 10 | CLI del provider | Install CLI Vast.ai, config con API key | **Riordinato**, stessa logica di Fase 7: installata automaticamente in `setup.sh` (nessun segreto d'account nell'installer), per validare lo stack "as-is" prima dell'evoluzione verso Grastorp/RunPod ([grastorp#15](https://github.com/danielesalpietro/grastorp/issues/15)) | **Fatto** ([#10](https://github.com/danielesalpietro/kickstart-berlin/issues/10)) |
-| 11 | Self-test/benchmark | Speedtest di rete + verifica GPU/RAM/rete, esito inviato al backend Vast.ai | **Riordinato**, stessa logica di Fase 7: `vastai self-test machine <machine_id>` reale (script standalone, a mano dall'operatore dopo un listing riuscito), non l'assessment Grastorp — resta comunque il passo successivo previsto, non sostituito da questa fase (vedi [grastorp#14](https://github.com/danielesalpietro/grastorp/issues/14)) | **Fatto** ([#11](https://github.com/danielesalpietro/kickstart-berlin/issues/11)) |
+| 11 | Self-test/benchmark | Speedtest di rete + verifica GPU/RAM/rete, esito inviato al backend Vast.ai | **Riordinato**, stessa logica di Fase 7: `vastai self-test machine <machine_id>` reale (script standalone, a mano dall'operatore dopo un listing riuscito), non l'assessment Grastorp — resta comunque il passo successivo previsto, non sostituito da questa fase (vedi [grastorp#14](https://github.com/danielesalpietro/grastorp/issues/14)) | **Fatto** ([#11](https://github.com/danielesalpietro/kickstart-berlin/issues/11)) — eseguito per davvero su `machine_id` reale, bloccato su un limite esterno non risolvibile da questo repo (vedi sotto) |
 | 12 | Port forwarding | Range di porte da aprire manualmente sul router, mostrato all'utente | Stesso principio, range di porte adattato ai deployment Grastorp invece che al range Vast.ai (16384-32768) | Da fare |
 | 13 | Listing marketplace | Pubblicazione della macchina sul marketplace Vast.ai (prezzo, durata) | **Non applicabile** al nodo locale; diventa rilevante solo per l'integrazione provider di [grastorp#15](https://github.com/danielesalpietro/grastorp/issues/15) | Fuori scope iniziale |
 | 14 | Report finale | Riepilogo: Machine ID, GPU, IP, porte, stato servizi | Riepilogo equivalente a fine installazione: stato Grastorp, GPU rilevate, IP, porte, esito assessment | Da fare |
@@ -219,6 +219,17 @@ equivalente per un nodo Grastorp.
 - `scripts/boot-test-qemu.sh` verifica, dopo il login SSH, che il
   servizio post-install completi e che `/var/lib/docker`/`daemon.json`
   risultino coerenti col Datastore.
+- **Gap scoperto sul collaudo reale, corretto (issue #41)**: `daemon.json`
+  da solo non basta — `dockerd` gira con containerd di sistema
+  (`--containerd=/run/containerd/containerd.sock`), quindi è containerd
+  a scrivere davvero i layer immagine su disco, non dockerd. Senza
+  correggere anche `root` in `/etc/containerd/config.toml`, la
+  maggior parte dei dati Docker reali finiva fuori dal Datastore
+  nonostante `daemon.json` fosse corretto (33G su 33.2G nel collaudo
+  Z8). Fix: nuova `configure_containerd_storage()`, chiamata da
+  `phase5_docker()` (non da qui: containerd non esiste ancora in Fase
+  3) — stessa directory di `data-root`, sottodirectory dedicata.
+  Regression test in CI. Dettaglio in `logbook-fase7.md`.
 
 ## Fase 4 — driver NVIDIA + NVIDIA Container Toolkit
 
@@ -239,13 +250,12 @@ equivalente per un nodo Grastorp.
 - **Configurazione del runtime Docker non qui**: `nvidia-ctk runtime
   configure --runtime=docker` richiede Docker già installato (Fase 5, non
   Fase 4) — andrà nella futura `phase5_docker()`.
-- **Limite noto**: nessuna GPU disponibile per la validazione end-to-end
-  in questa fase di sviluppo (Z8 non disponibile fino al 23/08, VM Azure
-  usata per Fase 2/3 senza GPU) — verificato solo il percorso "nessuna
-  GPU rilevata" e la sintassi; il Container Toolkit non è stato testabile
-  nemmeno per i soli comandi di rete (repository `nvidia.github.io`
-  bloccato dalla policy del sandbox di sviluppo, stesso tipo di
-  restrizione già vista per `docs.vast.ai` in Fase 1). Vedi
+- **Validato end-to-end su GPU reale** (Z8, 2026-08-23): RTX 3090,
+  driver 595.84/CUDA 13.2, `nvidia-smi` funzionante dopo il riavvio.
+  Bug trovato e corretto: `apt-mark hold` falliva su pacchetti
+  "fantasma" restituiti da `dpkg-query -W` senza filtro per stato
+  installato (interrompeva lo script **prima** del riavvio previsto) —
+  vedi `logbook_first_boot.md` (Problema 2). Vedi
   [`logbook-fase4.md`](logbook-fase4.md) per lo stato aggiornato.
 
 ## Fase 5 — Docker + runtime NVIDIA
@@ -263,10 +273,15 @@ equivalente per un nodo Grastorp.
   `nvidia.github.io` non sono bloccati come nel sandbox di sviluppo):
   installazione Docker reale riuscita, e confermato che
   `nvidia-ctk runtime configure` fa un merge pulito in `daemon.json`
-  senza perdere il `data-root` già scritto da Fase 3 — unico punto di
-  interazione tra fasi rimasto da confermare, ora chiuso. Resta sospesa
-  solo la verifica `docker run --gpus all` su GPU reale (Z8, dal 23/08).
-  Vedi [`logbook-fase5.md`](logbook-fase5.md).
+  senza perdere il `data-root` già scritto da Fase 3.
+- **`docker run --gpus all` confermato su GPU reale** (Z8, 2026-08-23):
+  GPU visibile nel container (nota: il tag
+  `nvidia/cuda:12.4.1-base-ubuntu24.04` citato in `docs/setup.md`
+  risulta ritirato da Docker Hub, verificato invece con
+  `12.6.0-base-ubuntu24.04`). Bug trovato e corretto sullo stesso
+  collaudo: `admin` non veniva mai aggiunto al gruppo `docker` (fix
+  #34, `usermod -aG docker admin` in coda a `phase5_docker()`, con
+  regression test in CI). Vedi [`logbook-fase5.md`](logbook-fase5.md).
 
 ## Fase 6 — rete
 
@@ -308,9 +323,19 @@ equivalente per un nodo Grastorp.
   passato come argomento diretto (shell history) e viene distrutto
   (`shred -u`) subito dopo l'uso; il comando stesso non finisce mai nei
   log. Dettaglio in [`logbook-fase7.md`](logbook-fase7.md).
-- **Limite noto**: non testabile con un comando reale in questa sessione
-  (richiede un account host Vast.ai loggato) — verificati solo i
-  percorsi di errore e la meccanica di distruzione del file col comando.
+- **Testato con un comando reale su hardware fisico** (Z8, 2026-08-23/24):
+  macchina `berlin-3eie` listata con successo su Vast.ai, machine ID
+  `148447`. 4 bug trovati nell'installer ufficiale Vast.ai stesso (non
+  nel nostro wrapper), **causati dalla nostra architettura ESX-style
+  pre-esistente** (`/var/lib/docker` symlink, `daemon.json` già scritto
+  da Fase 3/4) più uno di contesa lock `dpkg` — non un difetto
+  dell'installer su un host "stock" (vedi `CLAUDE.md` direttiva 10). I
+  4 fix sono automatizzati nel preflight/postflight di
+  `install-vastai-host.sh`, ma **non ancora verificati end-to-end come
+  blocco unico** — solo i singoli fix manuali sono stati confermati uno
+  per uno. Proprio da questo collaudo è emerso anche il gap
+  `containerd` (issue #41, vedi Fase 3 sopra). Dettaglio completo in
+  [`logbook-fase7.md`](logbook-fase7.md).
 
 ## Fase 8 — raccolta informazioni hardware
 
@@ -345,16 +370,15 @@ richiesta esplicita, non ancora implementata.)*
 - L'autenticazione (`vastai set api-key <key>`) resta comunque a mano
   dell'operatore, dopo il boot — nessuna API key mai hardcoded o
   committata nel repo, stessa disciplina di Fase 7/chiave SSH.
-- **Limite noto, non verificabile in questa sessione**: il README
-  ufficiale del CLI dichiara solo che l'installer mette `vastai` sotto
-  `$HOME/.local/share/vastai`, senza specificare se aggiunge anche un
-  symlink su una directory di PATH di sistema (nessun accesso di rete a
-  `vast.ai`/`docs.vast.ai` disponibile durante questa sessione, dominio
-  bloccato dalla policy di rete). `phase10_vastai_cli()` gestisce
-  comunque il caso "non trovato su PATH dopo l'installer" cercando
-  l'eseguibile sotto la home e collegandolo in `/usr/local/bin` — non
-  testabile end-to-end senza un host reale con accesso a `vast.ai`.
-  Dettaglio in [`logbook-fase10.md`](logbook-fase10.md).
+- **Confermato su hardware reale** (Z8, 2026-08-23/24): `vastai 1.5.5`
+  installato e **autenticato** (`vastai set api-key`/`vastai show user`
+  verificati). `phase10_vastai_cli()` gestisce il caso "non trovato su
+  PATH dopo l'installer" cercando l'eseguibile sotto la home e
+  collegandolo in `/usr/local/bin` — necessario per davvero: due bug
+  trovati e corretti sul collaudo reale (`$HOME` non definita
+  nell'ambiente del servizio systemd, permessi `/root` che bloccavano
+  l'esecuzione da `admin` senza sudo), vedi `logbook_first_boot.md`
+  (Problemi 3 e 4). Dettaglio in [`logbook-fase10.md`](logbook-fase10.md).
 
 ## Fase 11 — vastai self-test
 
@@ -380,10 +404,15 @@ richiesta esplicita, non ancora implementata.)*
   stubbato): parsing argomenti (`--machine-id` mancante o senza valore,
   opzione sconosciuta, `--help`), CLI `vastai` assente, autenticazione
   fallita, self-test fallito, passthrough dei flag extra dopo `--`.
-- **Non verificabile in sandbox** (per costruzione): il vero comando
-  richiede una macchina già listata su un account Vast.ai reale — da
-  testare quando Fase 7 avrà confermato un listing reale (stesso
-  blocco già annotato in `logbook-fase7.md`). Dettaglio in
+- **Eseguito per davvero** su `machine_id` reale (148447, Z8,
+  2026-08-23/24): fallisce su 3 requisiti oggettivi di questa rete
+  specifica (reliability, banda download/upload) — non un problema
+  dello stack o di configurazione. Con `--ignore-requirements` si
+  sblocca fino a un **403 persistente**, incrociato con i log interni
+  del daemon Vast.ai e identificato come **blocco anti-self-rent per
+  design** (l'`host_id` dell'offerta coincide con l'account che tenta
+  il noleggio) — **non risolvibile da questo repo**, serve supporto
+  diretto Vast.ai o un rental reale da terzi. Indagine completa in
   [`logbook-fase11.md`](logbook-fase11.md).
 
 ## Console status su tty1 + banner SSH (issue #27)
