@@ -15,7 +15,7 @@ hardware GPU né un account Vast.ai reale.
 |---|---|---|
 | 1 | Sintassi/struttura di `iso/user-data` (autoinstall) | `scripts/validate-autoinstall.py`, job `validate-autoinstall` in CI, ogni push/PR |
 | 2 | Sintassi shell di tutti gli script (`scripts/*.sh`, `postinstall/*.sh`) | `shellcheck`, stesso job |
-| 3 | Build ISO reale + boot QEMU/KVM completo, login SSH, mount Datastore, topologie disco singolo/doppio, `admin` nel gruppo `docker` (regression test fix #34) | `scripts/boot-test-qemu.sh`, job `build-and-boot-test` in CI (push a `develop`/`main`, o `workflow_dispatch` con `run_integration: true`) |
+| 3 | Build ISO reale + boot QEMU/KVM completo, login SSH, mount Datastore, topologie disco singolo/doppio, `admin` nel gruppo `docker` (regression test fix #34), `containerd` root sul Datastore (regression test fix #41) | `scripts/boot-test-qemu.sh`, job `build-and-boot-test` in CI (push a `develop`/`main`, o `workflow_dispatch` con `run_integration: true`) |
 
 Non coperto qui: qualunque cosa dipenda da una GPU NVIDIA fisica, da un
 account Vast.ai reale, o da hardware bare-metal — vedi sotto.
@@ -69,14 +69,27 @@ postura firewall esistente).
   test con dischi di tipo diverso (`-device nvme` di QEMU) per
   diventare un test automatico reale — non fatto, scope più grande di
   una singola verifica.
-- **`containerd` root path mai gestito dall'automazione (issue #41)**:
-  `phase3_docker_storage()`/`install-vastai-host.sh` correggono solo
-  `data-root` in `/etc/docker/daemon.json`, mai `root` in
-  `/etc/containerd/config.toml` — scoperto sul collaudo reale Z8
-  (2026-08-24): la maggior parte dei dati Docker (i layer immagine)
-  finisce comunque fuori dal Datastore. Fix non ancora implementato nel
-  repo, quindi nessun test automatico possibile finché non lo è — vedi
-  issue #41 e `logbook-fase7.md`.
+- **`containerd` root path — CORRETTO nel repo (2026-08-25), non ancora
+  verificato con un boot reale (issue #41)**: `phase3_docker_storage()`/
+  `install-vastai-host.sh` correggevano solo `data-root` in
+  `/etc/docker/daemon.json`, mai `root` in `/etc/containerd/config.toml`
+  — scoperto sul collaudo reale Z8 (2026-08-24): la maggior parte dei
+  dati Docker (i layer immagine) finiva fuori dal Datastore nonostante
+  `daemon.json` fosse corretto. **Fix**: nuova `configure_containerd_storage()`
+  in `postinstall/setup.sh`, chiamata da `phase5_docker()` dopo
+  l'installazione di Docker/containerd (non prima: il pacchetto
+  `containerd.io` scrive `config.toml` a install-time, editarlo prima
+  rischierebbe un conflitto dpkg sul conffile) — stessa directory di
+  `data-root`, sottodirectory dedicata. Stessa logica replicata nel
+  postflight di `install-vastai-host.sh` (l'installer Vast.ai reinstalla
+  `docker-ce`/`containerd.io`, che rigenera `config.toml` col default di
+  sistema). Editing testuale mirato (nessun parser TOML completo per la
+  scrittura): sostituisce solo la riga top-level `root = ...`, verificato
+  in sandbox che non tocchi la chiave `root` annidata sotto
+  `[plugins."io.containerd.grpc.v1.cri"]` (chiave diversa, stesso nome).
+  Nuovo regression test in `scripts/boot-test-qemu.sh` (CI). **Non ancora
+  verificato con un boot reale su hardware GPU** (nessuna GPU disponibile
+  in questa sessione) — vedi issue #41 e `logbook-fase7.md`.
 - **Self-test Fase 11 bloccato su un limite esterno a questo repo**: il
   403 persistente (blocco anti-self-rent Vast.ai) non è risolvibile
   lato software — vedi riga Fase 11 sopra e `logbook-fase11.md`.
