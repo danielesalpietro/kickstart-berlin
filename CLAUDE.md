@@ -137,6 +137,29 @@ fatto o a reintrodurre problemi già risolti.
    commit non ancora mergiati, `git rebase origin/develop` (mai
    scartarli) prima di aggiungere altro lavoro o aprire una nuova PR.
 
+10. **Principio di priorità (2026-08-24, con l'utente): in caso di
+    conflitto tra requisiti/limitazioni di Vast.ai e le nostre scelte
+    architetturali, vince Vast.ai — il resto (Grastorp-oriented) si
+    costruisce attorno, senza creare attrito.** "Berlin" (questo nodo)
+    va usato sia come host Vast.ai sia per altri scopi: quando
+    l'installer/la guida ufficiale Vast.ai si aspetta qualcosa che la
+    nostra architettura non offre nella forma attesa, **il nostro codice
+    si adatta per rendersi "ospitale"**, non il contrario. Precedente
+    concreto: Bug 1/2 del collaudo Fase 7 su Z8 (PR #30,
+    `logbook-fase7.md`) — entrambi causati dalla nostra pre-
+    configurazione (`/var/lib/docker` come symlink ESX-style, `daemon.json`
+    già scritto da `phase3`/`phase4` prima che l'installer Vast.ai
+    giri), non da un difetto dell'installer che si manifesterebbe su un
+    host "stock". Il fix corretto **non è** abbandonare l'architettura
+    ESX-style (resta il prerequisito per Grastorp), ma il pattern
+    preflight/postflight già in `install-vastai-host.sh` (presenta
+    temporaneamente una directory vera invece del symlink, poi ripristina
+    e migra i dati) — quel pattern è il riferimento per casi analoghi
+    futuri, non un caso a sé. Se una fase futura Grastorp-specifica
+    confliggerebbe con un'assunzione di Vast.ai, il criterio è lo
+    stesso: adattare il nostro lato, non aspettarsi che l'installer
+    Vast.ai gestisca la nostra architettura.
+
 ## Vincoli d'ambiente noti (da non riscoprire ogni volta)
 
 - **Domini bloccati dalla policy di rete di questa sandbox di sviluppo**:

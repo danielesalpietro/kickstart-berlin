@@ -6,23 +6,25 @@ hardware). Base derivata dal flusso di setup host di **Vast.ai**, propedeutica
 all'integrazione in [Grastorp](https://github.com/danielesalpietro/grastorp).
 
 > Stato: **early stage**, ma con la prima conferma end-to-end su hardware
-> fisico reale (HP Z8 G4 + RTX 3090, primo boot 2026-08-23) per le Fasi
-> 1-6, 8 e 10 — vedi [`logbook_first_boot.md`](logbook_first_boot.md) per
-> il diario completo del collaudo (3 bug trovati e corretti in
-> `postinstall/setup.sh`: pacchetti NVIDIA "fantasma" in Fase 4, `$HOME`
-> non definita e permessi `/root` in Fase 10) e
-> [`docs/collaudo-funzionale.md`](docs/collaudo-funzionale.md) per lo
-> stato aggiornato test-per-test. Fase 7 (daemon Vast.ai reale) e Fase 11
-> (self-test) restano da eseguire sullo stesso nodo — vedi
-> [`docs/setup.md`](docs/setup.md), Step 5 in poi. **Problema noto**: la
-> selezione automatica del disco (`match: {}`) non esclude i moduli
-> Optane PMem, quindi su hardware con PMem installato l'esito non è
-> deterministico — vedi `docs/collaudo-funzionale.md`.
+> fisico reale (HP Z8 G4 + RTX 3090, 2026-08-23/24) per **tutte** le fasi
+> implementate (1-8, 10-11) — vedi [`logbook_first_boot.md`](logbook_first_boot.md),
+> [`logbook-fase7.md`](logbook-fase7.md) e [`logbook-fase11.md`](logbook-fase11.md)
+> per il diario completo del collaudo (daemon Vast.ai installato, macchina
+> listata ID `148447`, self-test arrivato ai controlli reali) e
+> [`docs/collaudo-funzionale.md`](docs/collaudo-funzionale.md) per lo stato
+> aggiornato test-per-test. Restano due limiti **non risolvibili da questo
+> repo**: il self-test Fase 11 si blocca su un 403 identificato come
+> anti-self-rent per design di Vast.ai (serve supporto Vast.ai), e la
+> reliability/banda di questa rete specifica non soddisfa ancora i
+> requisiti minimi. Il fix per la selezione disco su hardware con moduli
+> Optane PMem è mergiato ma non ancora confermato con un boot reale — vedi
+> `docs/collaudo-funzionale.md`.
 
 ## Perché
 
-Prima di poter installare Grastorp su un nodo fisico "vuoto", serve un
-procedimento ripetibile che porti una macchina da ISO di boot a host pronto
+Prima di poter installare Grastorp — o un altro ambiente di destinazione —
+su un nodo fisico "vuoto", serve un procedimento ripetibile che porti una
+macchina da ISO di boot a host pronto
 (OS configurato, driver NVIDIA, Docker con runtime GPU, rete, primo
 assessment hardware). Piuttosto che progettare questo flusso da zero, si parte
 da un procedimento già maturo e testato su migliaia di macchine reali: quello
@@ -31,10 +33,24 @@ per trasformare una macchina in un nodo del loro marketplace GPU. Vast.ai in
 particolare pubblica una guida host-setup dettagliata (`docs.vast.ai`) e
 diversi script community ne replicano fedelmente i passi.
 
-Questo repo isola quel procedimento (OS → driver → container runtime → rete →
-benchmark) dalla parte specifica di Vast.ai (il suo daemon proprietario, il
-suo marketplace), per poterlo riusare come base d'installazione di un nodo
-Grastorp, con le dovute sostituzioni (vedi mapping sotto).
+**"Transitorio" descrive il punto di partenza del design, non il supporto a
+Vast.ai**: si parte dal suo flusso perché è il più maturo e verificabile su
+hardware reale disponibile oggi, non perché sia destinato a essere
+sostituito. Deciso esplicitamente con l'utente (2026-08-24, vedi
+[`CLAUDE.md`](CLAUDE.md) direttiva 10): "Berlin" (questo nodo) va usato
+**sia** come host Vast.ai **sia** per altri scopi, e kickstart-berlin è
+pensato per poter delivrare in futuro anche altri ambienti di destinazione
+(a partire da Grastorp) **senza abbandonare** la compatibilità con Vast.ai —
+non un "sostituto" che la rimpiazza, un procedimento comune a cui si
+aggiungono nuovi target. In caso di conflitto tra un requisito/limitazione
+di Vast.ai e una nostra scelta architetturale, è quest'ultima ad adattarsi
+per restare "ospitale", non il contrario.
+
+Questo repo tiene distinta la parte di host-setup generica (OS → driver →
+container runtime → rete → benchmark, riusabile da qualunque target) dalla
+parte specifica di ciascun ambiente di destinazione (il daemon Vast.ai e il
+suo marketplace da un lato, il backend/agent Grastorp dall'altro, altri in
+futuro) — vedi mapping sotto.
 
 ## Nota terminologica su "Kickstart"
 
@@ -79,9 +95,12 @@ equivalente per un nodo Grastorp.
 - **Script post-install**: uno script idempotente (stile
   `vastai-host-setup/setup.sh`, ma senza le parti specifiche Vast.ai) per le
   fasi 3-9 e 12-14, eseguito al primo boot via systemd unit oneshot.
-- **Nessun daemon proprietario di terzi**: al posto del Kaalia daemon (fase
-  7) e della CLI/listing Vast.ai (fasi 10/13), il post-install porta
-  direttamente all'avvio di Grastorp via `docker compose up`.
+- **Daemon Vast.ai mantenuto, non sostituito**: il daemon Kaalia (Fase 7) e
+  la CLI/listing Vast.ai (Fasi 10/13) restano parte del flusso, installati a
+  mano dall'operatore quando il nodo va usato come host Vast.ai (script
+  standalone, mai in `main()` — vedi `CLAUDE.md` direttiva 2). Un futuro
+  target aggiuntivo (es. Grastorp via `docker compose up`) si aggiunge
+  accanto a questo, non lo rimpiazza (vedi `CLAUDE.md` direttiva 10).
 
 ## Fase 1 — build dell'ISO autoinstall
 
