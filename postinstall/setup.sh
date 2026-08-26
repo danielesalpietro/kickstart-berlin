@@ -18,6 +18,8 @@ DATASTORE_LINK="__DATASTORE_MOUNT_ROOT__/__DATASTORE_SYMLINK_NAME__"
 DOCKER_DATA_ROOT="${DATASTORE_LINK}/docker"
 DOCKER_DAEMON_JSON="/etc/docker/daemon.json"
 VAR_LIB_DOCKER="/var/lib/docker"
+CONTAINERD_CONFIG_TOML="/etc/containerd/config.toml"
+CONTAINERD_DATA_ROOT="${DOCKER_DATA_ROOT}/containerd"
 
 log() { printf '[kickstart-berlin] %s\n' "$*" >&2; }
 err() { printf '[kickstart-berlin] ERRORE: %s\n' "$*" >&2; exit 1; }
@@ -211,6 +213,74 @@ phase4_nvidia_driver() {
   log "Fase 4 completata."
 }
 
+# issue #41 — containerd ha un proprio "root" in /etc/containerd/
+# config.toml, indipendente da data-root di Docker (chiave gestita da
+# phase3_docker_storage() in daemon.json): dockerd gira con
+# --containerd=/run/containerd/containerd.sock (containerd di sistema,
+# non embedded), quindi e' containerd stesso — non dockerd — a scrivere i
+# layer immagine sul disco. Senza questo fix, la stragrande maggioranza
+# dei dati Docker reali (i layer, non i metadati) restava fuori dal
+# Datastore nonostante daemon.json fosse corretto — scoperto sul collaudo
+# reale Z8 (2026-08-24, vedi logbook-fase7.md). Stessa directory di
+# data-root, in un sottodirectory dedicato (${DOCKER_DATA_ROOT}/containerd).
+#
+# Va chiamata DOPO che containerd.io e' installato (dipendenza di
+# docker-ce, vedi phase5_docker()): il pacchetto crea /etc/containerd/
+# config.toml a install-time, scriverci prima rischierebbe un conflitto
+# dpkg sul conffile. Editing testuale mirato (non un parser TOML
+# completo, non disponibile via stdlib per la scrittura): sostituisce
+# solo la riga top-level "root = ...", lasciando intatto il resto del
+# file. Idempotente: se il valore e' gia' corretto, nessuna scrittura ne'
+# riavvio.
+configure_containerd_storage() {
+  if ! command -v containerd >/dev/null 2>&1; then
+    log "containerd non installato: salto la config dello storage (Fase 5 non ancora eseguita?)."
+    return 0
+  fi
+
+  log "Configuro containerd per usare il Datastore (${CONTAINERD_DATA_ROOT}) ..."
+  mkdir -p "$CONTAINERD_DATA_ROOT"
+  mkdir -p "$(dirname "$CONTAINERD_CONFIG_TOML")"
+
+  local result
+  result="$(python3 - "$CONTAINERD_CONFIG_TOML" "$CONTAINERD_DATA_ROOT" <<'PYEOF'
+import re
+import sys
+
+path, root = sys.argv[1], sys.argv[2]
+desired = f'root = "{root}"'
+top_level_re = re.compile(r'(?m)^root\s*=\s*".*"$')
+
+try:
+    with open(path, encoding="utf-8") as f:
+        content = f.read()
+except FileNotFoundError:
+    content = ""
+
+if re.search(r'(?m)^' + re.escape(desired) + r'$', content):
+    print("unchanged")
+    sys.exit(0)
+
+if top_level_re.search(content):
+    content = top_level_re.sub(desired, content, count=1)
+else:
+    content = desired + "\n" + content
+
+with open(path, "w", encoding="utf-8") as f:
+    f.write(content)
+print("changed")
+PYEOF
+)"
+
+  if [[ "$result" == "changed" ]]; then
+    log "${CONTAINERD_CONFIG_TOML} aggiornato: riavvio containerd e docker ..."
+    systemctl restart containerd
+    systemctl restart docker
+  else
+    log "${CONTAINERD_CONFIG_TOML} già corretto."
+  fi
+}
+
 # Fase 5 (issue #5) — Docker + config runtime NVIDIA. La guida ufficiale
 # Vast.ai non descrive comandi espliciti per questo passaggio (nascosto
 # nel proprio installer proprietario, come già notato per il Container
@@ -236,6 +306,8 @@ phase5_docker() {
     rm -f /tmp/get-docker.sh
     systemctl enable --now docker
   fi
+
+  configure_containerd_storage
 
   if command -v nvidia-ctk >/dev/null 2>&1; then
     log "Configuro il runtime NVIDIA per Docker ..."

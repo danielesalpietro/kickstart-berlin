@@ -387,3 +387,59 @@ genuinamente lì.
       `machine_id` reale (148447) su cui operare — riprenderla.
 - [ ] Aprire/aggiornare la PR con questi fix quando l'automazione sopra
       è implementata.
+
+## 2026-08-25 — Fix strutturale del gap containerd (issue #41), implementato
+
+Il gap containerd descritto sopra ("2026-08-24 — Fix live sulla Z8
+reale"/issue #41) aveva solo un fix manuale sul nodo, mai portato nel
+repo. Implementato ora:
+
+- **`configure_containerd_storage()`** in `postinstall/setup.sh`,
+  chiamata da `phase5_docker()` subito dopo l'installazione di
+  Docker/containerd (non da `phase3_docker_storage()`: containerd non
+  esiste ancora a quel punto della sequenza, e scrivere
+  `/etc/containerd/config.toml` prima che il pacchetto `containerd.io`
+  lo generi a install-time rischierebbe un conflitto dpkg sul
+  conffile). Root puntato su `${DOCKER_DATA_ROOT}/containerd` (stessa
+  directory di `data-root`, sottodirectory dedicata).
+- Stessa logica replicata nel `_postflight()` di
+  `install-vastai-host.sh`: l'installer Vast.ai reinstalla
+  `docker-ce`/`containerd.io` come parte del proprio wizard "Storage",
+  che rigenera `config.toml` col default di sistema — va quindi
+  ricorretto dopo l'installer, non solo prima.
+- **Editing testuale mirato, non un parser TOML completo** (la stdlib
+  Python ha solo `tomllib` in lettura, non in scrittura, e non c'è
+  garanzia che un pacchetto `toml`/`tomli_w` sia disponibile
+  sull'host): sostituisce solo la riga top-level `root = "..."`,
+  lasciando intatto il resto del file. **Verificato in sandbox** con 4
+  casi sintetici (file assente, file con `root` top-level da
+  sostituire, riesecuzione idempotente sullo stesso valore, file con un
+  `root` annidato sotto `[plugins."io.containerd.grpc.v1.cri"]` — stesso
+  nome di chiave, sezione diversa): il regex `^root\s*=...` ancorato a
+  inizio riga senza indentazione non tocca la chiave annidata, la
+  preserva intatta, e prepende la riga desiderata in testa al file.
+  Import interessante da CLAUDE.md direttiva #4: proprio questo tipo di
+  ambiguità (due chiavi con lo stesso nome a livelli diversi) è la
+  classe di bug che un test in sandbox può intercettare anche senza
+  containerd reale disponibile.
+- **Regression test aggiunto** in `scripts/boot-test-qemu.sh` (CI):
+  dopo il check esistente su `data-root`/gruppo `docker`, verifica che
+  `/etc/containerd/config.toml` contenga la riga `root` corretta —
+  gira automaticamente ad ogni `build-and-boot-test`.
+- **Non verificabile per costruzione in questa sessione**: nessun host
+  con GPU disponibile per un boot reale end-to-end (il QEMU test di CI
+  non ha GPU, verifica solo che il file venga scritto correttamente
+  dopo l'installazione Docker, non l'intero stack Fase 4/5/7 insieme).
+  Da confermare al prossimo collaudo reale su Z8, idealmente insieme
+  alla riverifica del fix PMem di PR #30 (nessuno dei due è stato
+  ancora testato con un boot reale da zero).
+
+## Prossimi passi (aggiornato 2026-08-25)
+
+- [x] Fix strutturale containerd (issue #41) — implementato e
+      verificato in sandbox, vedi sopra.
+- [ ] Confermare il fix containerd con un boot reale su Z8 (nessuna GPU
+      disponibile in questa sessione).
+- [ ] I 3 fix Bug 1/2/4 dell'installer Vast.ai restano da verificare
+      end-to-end come blocco unico (solo i singoli passi manuali sono
+      stati confermati uno per uno) — invariato rispetto a sopra.

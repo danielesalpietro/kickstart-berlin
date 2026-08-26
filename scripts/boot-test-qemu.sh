@@ -443,4 +443,21 @@ fi
 
 log "Gruppo docker verificato: admin può usare docker senza sudo."
 
+# Issue #41: regression test per "containerd root path mai gestito
+# dall'automazione" — scoperto sul collaudo reale (Z8, 2026-08-24): senza
+# questo fix daemon.json punta al Datastore ma containerd (il motore che
+# scrive davvero i layer immagine) continua a scrivere sotto
+# /var/lib/docker/containerd di default, vanificando l'architettura
+# Datastore per la maggior parte dei dati Docker reali — vedi
+# configure_containerd_storage() in postinstall/setup.sh.
+CONTAINERD_DATA_ROOT="${DOCKER_DATA_ROOT}/containerd"
+CONTAINERD_CHECK="grep -qxF 'root = \"${CONTAINERD_DATA_ROOT}\"' /etc/containerd/config.toml"
+log "Verifico che containerd punti al Datastore (issue #41) ..."
+if ! "${SSH_CMD[@]}" "$CONTAINERD_CHECK"; then
+  "${SSH_CMD[@]}" 'cat /etc/containerd/config.toml 2>&1' || true
+  err "containerd non punta al Datastore (regressione dell'issue #41 — vedi configure_containerd_storage() in postinstall/setup.sh)"
+fi
+
+log "containerd verificato: root -> ${CONTAINERD_DATA_ROOT}."
+
 log "Test superato."

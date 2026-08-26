@@ -62,6 +62,7 @@ set -euo pipefail
 
 DOCKER_DAEMON_JSON="/etc/docker/daemon.json"
 VAR_LIB_DOCKER="/var/lib/docker"
+CONTAINERD_CONFIG_TOML="/etc/containerd/config.toml"
 PREFLIGHT_STATE_DIR=""
 
 COMMAND_FILE=""
@@ -182,6 +183,55 @@ with open(current_path, "w", encoding="utf-8") as f:
 PYEOF
     log "Postflight: ${DOCKER_DAEMON_JSON} ripristinato/mergiato con data-root sul Datastore."
     systemctl restart docker 2>/dev/null || true
+  fi
+
+  # issue #41: l'installer Vast.ai reinstalla docker-ce/containerd.io come
+  # parte del proprio wizard "Storage", il che rigenera
+  # /etc/containerd/config.toml con il default di sistema — anche se
+  # phase3_docker_storage()/configure_containerd_storage() in setup.sh
+  # l'avevano già corretto prima di questo script. Stessa logica di
+  # configure_containerd_storage(): sostituisce solo la riga top-level
+  # "root = ...", nessun parser TOML completo.
+  if [[ -n "$docker_target" ]]; then
+    local containerd_target="${docker_target}/containerd"
+    mkdir -p "$containerd_target"
+    mkdir -p "$(dirname "$CONTAINERD_CONFIG_TOML")"
+    local containerd_result
+    containerd_result="$(python3 - "$CONTAINERD_CONFIG_TOML" "$containerd_target" <<'PYEOF'
+import re
+import sys
+
+path, root = sys.argv[1], sys.argv[2]
+desired = f'root = "{root}"'
+top_level_re = re.compile(r'(?m)^root\s*=\s*".*"$')
+
+try:
+    with open(path, encoding="utf-8") as f:
+        content = f.read()
+except FileNotFoundError:
+    content = ""
+
+if re.search(r'(?m)^' + re.escape(desired) + r'$', content):
+    print("unchanged")
+    sys.exit(0)
+
+if top_level_re.search(content):
+    content = top_level_re.sub(desired, content, count=1)
+else:
+    content = desired + "\n" + content
+
+with open(path, "w", encoding="utf-8") as f:
+    f.write(content)
+print("changed")
+PYEOF
+)"
+    if [[ "$containerd_result" == "changed" ]]; then
+      log "Postflight: ${CONTAINERD_CONFIG_TOML} ripristinato sul Datastore, riavvio containerd e docker ..."
+      systemctl restart containerd 2>/dev/null || true
+      systemctl restart docker 2>/dev/null || true
+    else
+      log "Postflight: ${CONTAINERD_CONFIG_TOML} già corretto."
+    fi
   fi
 
   rm -rf "$PREFLIGHT_STATE_DIR"
