@@ -320,6 +320,102 @@ nodo passi in produzione definitiva.
   lato Vast.ai (non risolvibile da questo repo) — vedi
   `logbook-fase11.md` per il dettaglio completo dell'indagine.
 
+## 2026-08-24 (continua) — `ndctl`/`ipmctl` e `python3-pip` installati (issue #35, #37)
+
+Ripresa la sessione dopo le 48h di manutenzione: stesse credenziali
+SSH dell'utente, ma IP/porta diversi da prima (`151.64.182.141:2222`
+invece di `:22` — DHCP dopo la manutenzione, o comunque non prevedibile
+a priori). Da qui in poi confermato che l'accesso live al nodo funziona
+di nuovo normalmente.
+
+Su richiesta esplicita dell'utente, installati via `apt-get` (pacchetti
+Ubuntu 24.04 standard, nessun repository esterno):
+
+- **`ndctl` `77-2ubuntu2`** (repo `main`) e **`ipmctl`
+  `03.00.00.0485-1build1`** (repo `universe`) — issue #35, prerequisito
+  per ispezionare/riconfigurare le region PMem (`ndctl list -Ru`
+  conferma quanto già visto in `lsblk`: `region0` e `region1` da 252GiB
+  ciascuna, entrambe `available_size: 0` — `region1` ha già un
+  namespace raw non partizionato sopra, coerente con `pmem1s` senza
+  sotto-partizioni). Solo tooling di ispezione installato: **nessuna
+  riconfigurazione fsdax/devdax eseguita** — quella decisione resta
+  aperta in issue #35 (fsdax vs devdax, caso d'uso EMH-2 esatto).
+- **`python3-pip`** (`pip 24.0` su Python 3.12.3) — issue #37.
+
+Entrambe le installazioni verificate a basso rischio prima di
+procedere (pacchetti standard, nessuna modifica a dati/config
+esistenti) — nessun servizio interrotto (`docker`, `containerd`,
+`vastai.service`, `vast_metrics.service` tutti ancora attivi dopo
+entrambe). L'installazione di `ndctl`/`ipmctl` ha triggerato un
+riavvio automatico di `vast_metrics.service` da parte di `needrestart`
+(dipendenza di libreria toccata) — verificato attivo subito dopo,
+nessun impatto.
+
+## 2026-08-24 (continua) — `region1` riconfigurata in `fsdax` (issue #35)
+
+Informazione arrivata da un'altra sessione/progetto (EMH-2), **non
+presa per buona senza verifica indipendente**: dettaglio `ipmctl`/`ndctl`
+sulla topologia PMem reale, con la conclusione che entrambe le region
+AppDirect hanno `FreeCapacity: 0.000 GiB` (tutta la capacità è già
+allocata in namespace esistenti, non c'è "spazio libero" da trovare) e
+che abilitare EMH-2 richiede distruggere/ricreare il namespace di
+`region1` (`pmem1s`, vuota/mai montata) in modalità `fsdax` o `devdax`.
+
+Verificato di persona sul nodo prima di agire, non fidandosi del solo
+testo incollato:
+
+- `ipmctl show -dimm`: 4 DIMM Optane, 126.422 GiB ciascuno, `Disabled,
+  Frozen` — confermato identico.
+- `ipmctl show -region`: 2 region AppDirect da 252 GiB, entrambe
+  `FreeCapacity: 0.000 GiB` — confermato identico.
+- `ndctl list -Nu`: `namespace1.0` → `pmem1s`, modalità `sector` —
+  confermato identico.
+- `grep pmem1 /etc/fstab`: nessun risultato — nessuna automazione del
+  repo né nient'altro sul nodo referenzia `pmem1s`. `namespace0.0` →
+  `pmem0s` (root, `/boot/efi`, Datastore — tutto ciò che è vivo sul
+  nodo) resta un namespace completamente separato, non toccato
+  dall'operazione.
+
+Eseguito su conferma esplicita dell'utente:
+
+```
+sudo ndctl destroy-namespace namespace1.0 --force
+sudo ndctl create-namespace -r region1 -m fsdax
+```
+
+Risultato: `namespace1.0` ora in modalità `fsdax`, block device
+`pmem1` (senza il suffisso "s" — la "s" indicava la modalità sector
+precedente), 248.1G. Verificato dopo l'operazione: `docker`,
+`containerd`, `vastai.service`, `vast_metrics.service` tutti ancora
+attivi, `/` (su `pmem0s2`, namespace0.0) invariato — nessun impatto
+sul resto del nodo, come atteso data la separazione fra region0/region1.
+
+**Non ancora fatto**: nessun filesystem creato su `/dev/pmem1`, nessun
+mount — la riconfigurazione fsdax è il prerequisito per EMH-2, non
+l'integrazione stessa (fuori scope di questo repo, che tratta la Z8
+come host GPU generico, non come nodo EMH-2 specifico — resta un'area
+di lavoro esterna a kickstart-berlin, coordinarsi con l'altra
+sessione/progetto per i passi successivi).
+
+## 2026-08-24 (continua) — fix #34 (admin nel gruppo docker) applicato live, non solo nel repo
+
+Il fix di `phase5_docker()` (PR #38, issue #34: `usermod -aG docker
+admin`) corregge solo le **future** installazioni via `setup.sh` — non
+si applica retroattivamente a un nodo già installato, come confermato
+dall'utente con una sessione SSH del tutto nuova (`id admin` non
+elencava `docker`, non un problema di cache di gruppo della sessione
+corrente). Applicato lo stesso fix live sulla Z8:
+
+```
+sudo usermod -aG docker admin
+```
+
+Verificato da una sessione SSH nuova (necessario: l'appartenenza a un
+gruppo si aggiorna solo al login successivo, non nella sessione già
+attiva) — `id admin` ora include `988(docker)`, `docker ps` funziona
+senza `sudo`. Il gruppo `docker` (gid 988) prima conteneva solo
+`vastai_kaalia`, confermando il bug.
+
 ## Prossimi passi
 
 - [x] Riconciliare il branch — vedi sezione sopra.
@@ -330,13 +426,28 @@ nodo passi in produzione definitiva.
       rispetto ai moduli PMem — Problema 1, **corretto** (allowlist per
       path) e rafforzato con `--disk-serial` opzionale per il caso
       multi-disco scoperto sopra.
+- [x] `ndctl`/`ipmctl` installati (issue #35) — riconfigurazione
+      fsdax/devdax di `region1` resta una decisione aperta, non ancora
+      presa.
+- [x] `python3-pip` installato (issue #37).
 - [ ] Valutare se riportare anche `docs/setup.md`/`docs/setup.docx` in
       `develop` (mai fusi dopo la PR #23).
-- [ ] Mergiare PR #29 e #30 quando approvate.
+- [ ] Mergiare le PR aperte quando approvate/riviste dall'utente
+      (vedi issue/PR tracker per lo stato aggiornato — cresciuto molto
+      in questa sessione, non elencato singolarmente qui per evitare
+      che questa lista invecchi rispetto a GitHub).
 - [ ] Prossimo reinstall da zero: dischi Windows scollegati fisicamente
       prima, PMem lasciato collegato — verificare che il fix Problema 1
-      funzioni davvero su un boot reale (non ancora testato).
+      funzioni davvero su un boot reale (non ancora testato). **Nota
+      2026-08-24**: il piano è cambiato in corso di sessione — l'utente
+      vuole riusare MZ1L2960HCJR (NVMe, oggi ancora NTFS/Windows) come
+      disco Datastore/container invece di scollegarlo soltanto, quindi
+      il reinstall futuro dovrà wipare quel disco specifico, non solo
+      escluderlo — vedi conversazione, non ancora in un logbook
+      dedicato al reinstall.
 - [ ] Rimuovere gli strumenti dev-only (gh, claude, actions runner)
       prima che il nodo passi in produzione definitiva.
 - [ ] Capire con supporto Vast.ai come sbloccare il self-test (Fase 11,
       vedi `logbook-fase11.md`).
+- [ ] issue #36 (CUDA toolkit nativo): ancora da decidere se serve un
+      caso d'uso non containerizzato prima di installarlo.
