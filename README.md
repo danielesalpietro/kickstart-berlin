@@ -86,7 +86,7 @@ equivalente per un nodo Grastorp.
 | 4 | Driver NVIDIA + Container Toolkit | Driver pinnato (es. 535) + NVIDIA Container Toolkit da repo ufficiale | Adattato: nessuna versione pinnata (non richiesta dalla guida ufficiale Vast.ai, seguita strettamente — vedi `logbook-fase4.md`), driver auto-rilevato via `ubuntu-drivers autoinstall` | **In corso** ([#4](https://github.com/danielesalpietro/kickstart-berlin/issues/4)) — confermato su GPU reale (RTX 3090) |
 | 5 | Docker | Install da `get.docker.com`, config con runtime NVIDIA | Identico | **In corso** ([#5](https://github.com/danielesalpietro/kickstart-berlin/issues/5)) — confermato (`docker run --gpus all`, gruppo `docker` fix #34) |
 | 6 | Rete | DHCP via Netplan, DNS pubblici, hostname | Identico, propedeutico al rilevamento NIC di Grastorp ([grastorp#11](https://github.com/danielesalpietro/grastorp/issues/11)); range di porte TCP+UDP aperto su ufw se attivo (guida ufficiale Vast.ai) | **In corso** ([#6](https://github.com/danielesalpietro/kickstart-berlin/issues/6)) — confermato (regole `ufw` corrette) |
-| 7 | Installazione daemon del provider | Wizard ufficiale Vast.ai (Kaalia daemon) + API key utente | **Riordinato**: si valida prima il nodo come host Vast.ai reale (daemon ufficiale, installato a mano dall'operatore) per confermare la piena compatibilità dello stack — l'evoluzione verso il backend/agent Grastorp resta il passo successivo, non sostituisce più questa fase (vedi `logbook-fase7.md`) | **In corso** ([#7](https://github.com/danielesalpietro/kickstart-berlin/issues/7)) — daemon reale confermato su Z8 (macchina listata, ID `148447`); automazione preflight/postflight non ancora verificata end-to-end come blocco unico |
+| 7 | Installazione daemon del provider | Wizard ufficiale Vast.ai (Kaalia daemon) + API key utente | **Riordinato**: si valida prima il nodo come host Vast.ai reale (daemon ufficiale, installato a mano dall'operatore) per confermare la piena compatibilità dello stack — l'evoluzione verso il backend/agent Grastorp resta il passo successivo, non sostituisce più questa fase (vedi `logbook-fase7.md`) | **In corso** ([#7](https://github.com/danielesalpietro/kickstart-berlin/issues/7)) — daemon reale confermato su Z8 (macchina listata, ID `148447`, primi guadagni reali da noleggi di terzi dal 27/08); automazione preflight/postflight non ancora verificata end-to-end come blocco unico |
 | 8 | Raccolta info hardware | `dmidecode` + permessi sudo dedicati, usato per popolare il "machine info" del marketplace | **Riusato as-is**: stesso meccanismo alla base del node profiling di Grastorp ([grastorp#14](https://github.com/danielesalpietro/grastorp/issues/14)) — permessi sudo dedicati non necessari (l'admin ha già NOPASSWD completo) | **In corso** ([#8](https://github.com/danielesalpietro/kickstart-berlin/issues/8)) — confermato, `nvidia_gpu` popolato con dati reali |
 | 9 | Manutenzione | Timer systemd per pulizia oraria container/immagini inutilizzati | Riusabile as-is | Da fare |
 | 10 | CLI del provider | Install CLI Vast.ai, config con API key | **Riordinato**, stessa logica di Fase 7: installata automaticamente in `setup.sh` (nessun segreto d'account nell'installer), per validare lo stack "as-is" prima dell'evoluzione verso Grastorp/RunPod ([grastorp#15](https://github.com/danielesalpietro/grastorp/issues/15)) | **Fatto** ([#10](https://github.com/danielesalpietro/kickstart-berlin/issues/10)) |
@@ -336,6 +336,12 @@ equivalente per un nodo Grastorp.
   per uno. Proprio da questo collaudo è emerso anche il gap
   `containerd` (issue #41, vedi Fase 3 sopra). Dettaglio completo in
   [`logbook-fase7.md`](logbook-fase7.md).
+- **Primo guadagno reale confermato** (2026-08-27): `$0.39` di earnings
+  su `cloud.vast.ai/earnings/` (GPU + storage), da un noleggio di un
+  account terzo — non un self-test o un run interno del daemon, la
+  prima conferma che l'intero stack funziona end-to-end come host
+  Vast.ai vero e proprio. Non cambia lo stato del blocco anti-self-rent
+  di Fase 11 sotto: sono meccanismi distinti.
 
 ## Fase 8 — raccolta informazioni hardware
 

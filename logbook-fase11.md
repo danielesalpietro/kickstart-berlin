@@ -297,3 +297,15 @@ qui solo per completezza del diario.
 - [ ] Aprire/aggiornare la PR includendo Fasi 10 e 11 insieme, dato che
       condividono la stessa dipendenza bloccante — sbloccata fino al
       punto del self-rent.
+
+## 2026-08-27 — Nota: primo rental reale confermato, non risolve il blocco self-rent
+
+Vedi `logbook-fase7.md`, 2026-08-27: la macchina `berlin-3eie` (ID
+`148447`) ha generato i primi guadagni reali ($0.39, GPU+Storage) da un
+noleggio di terzi. **Non cambia la conclusione sopra**: il self-test
+resta bloccato dallo stesso 403 anti-self-rent, un meccanismo distinto
+(l'host tenta di noleggiare la propria macchina con la propria API key,
+indipendentemente da chi altro la sta effettivamente affittando in quel
+momento). Non riverificato se il rental reale abbia cambiato lo stato
+"unverified" della macchina lato Vast.ai — resterebbe comunque
+ortogonale al 403 del self-test, non un suo sblocco.
