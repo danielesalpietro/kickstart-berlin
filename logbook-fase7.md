@@ -443,3 +443,28 @@ repo. Implementato ora:
 - [ ] I 3 fix Bug 1/2/4 dell'installer Vast.ai restano da verificare
       end-to-end come blocco unico (solo i singoli passi manuali sono
       stati confermati uno per uno) — invariato rispetto a sopra.
+
+## 2026-08-27 — Primo guadagno reale confermato: il nodo funziona come host Vast.ai a tutti gli effetti
+
+L'utente ha condiviso uno screenshot di `cloud.vast.ai/earnings/`
+(machine `berlin-3eie`, ID `148447`): **$0.39 di earnings reali**
+accumulati nella finestra 28/07-27/08/2026, dettaglio GPU $0.37 +
+Storage $0.02 (Bandwidth/Referral $0.00). Il grafico mostra guadagni
+registrati su (almeno) due giornate distinte verso la fine della
+finestra (intorno al 22 e al 27/08) — coerente con la macchina messa
+in manutenzione per 48h il 24/08 (vedi `logbook_first_boot.md`, "Stato
+a fine sessione") e poi rientrata attiva.
+
+**Perché conta**: non è un self-test o un run interno del daemon, è un
+**noleggio reale da un account terzo** — la prima conferma che l'intero
+stack (Fasi 1-8, 10, daemon Fase 7) funziona end-to-end come host
+Vast.ai vero e proprio, non solo "listato con successo". Aggiornato lo
+stato di riga 7 in `docs/collaudo-funzionale.md` di conseguenza.
+
+**Cosa NON dimostra**: un rental reale da terzi passa per un
+meccanismo/account diverso da quello usato dal self-test (che tenta il
+noleggio con l'API key dello stesso host, da cui il blocco anti-self-
+rent indagato sopra) — non c'è motivo di aspettarsi che sblocchi anche
+`vastai self-test machine 148447`, resta un problema distinto. Non
+riverificato in questa sessione se lo stato "unverified" della macchina
+sia cambiato a seguito del rental.
