@@ -416,8 +416,48 @@ attiva) — `id admin` ora include `988(docker)`, `docker ps` funziona
 senza `sudo`. Il gruppo `docker` (gid 988) prima conteneva solo
 `vastai_kaalia`, confermando il bug.
 
+## 2026-09-10 — Dati di `sda` copiati su `sdc`, `fstab` aggiornata (spazio insufficiente + blocchi con errori)
+
+Riportato dall'utente: per motivi di spazio insufficiente e blocchi con
+errori (bad block) su `sda`, i dati sono stati copiati su `sdc` e
+`/etc/fstab` sulla Z8 è stata aggiornata di conseguenza. L'utente
+riferisce l'intervento come **verificato su hardware reale, con
+riscontro anche nei log di sistema** — non verificato in modo
+indipendente da questa sessione: né il vecchio IP LAN
+(`192.168.1.110:22`) né il nuovo IP pubblico comunicato per l'accesso
+(`151.66.141.242:22`, vedi sotto) sono raggiungibili dall'ambiente
+cloud di questa sessione (connessione TCP in timeout su entrambi), che
+quindi non ha potuto eseguire `smartctl`/`dmesg`/`cat /etc/fstab` sul
+nodo per confermare in prima persona. Stesso limite già annotato più
+volte in questo file per le sessioni cloud rispetto a un nodo fisico
+raggiungibile solo da chi ha accesso diretto alla LAN o una sessione
+locale collegata via Remote Control.
+
+**Nuovo indirizzo di accesso**: `151.66.141.242` (porta 22) — sostituisce
+gli indirizzi precedenti (`192.168.1.110`, e prima ancora
+`151.64.182.141:2222` dopo la manutenzione del 24/08 sopra). Confermato
+ancora una volta che l'IP/porta del nodo non sono stabili tra una
+sessione e l'altra.
+
+**Aperto, da chiarire con verifica diretta sul nodo** (nessuna assunzione
+fatta qui): quale disco fisico corrisponde oggi a `sda`/`sdc` — le
+lettere `sd*` si sono già dimostrate non stabili su questo nodo dopo il
+ricollegamento dei 5 dischi Windows del 24/08 (sezione sopra), e al
+primo collaudo `sda` era il disco WD 465GB NTFS **non toccato**
+dall'installazione (root/Datastore vivono su `pmem0s*`, non su `sda` —
+vedi Problema 1). Non è quindi scontato che questo intervento riguardi
+lo stesso disco. Da verificare alla prossima sessione con accesso
+reale: identità dei due dischi (`lsblk`/`blkid`/numero seriale), causa
+esatta dei blocchi con errori (output SMART/`dmesg`), contenuto
+risultante di `/etc/fstab`, ed eventuale impatto su Datastore/config
+Docker se il disco coinvolto è mai stato referenziato lì.
+
 ## Prossimi passi
 
+- [ ] Verificare sul nodo reale il dettaglio tecnico dell'intervento
+      `sda`→`sdc` del 2026-09-10 (identità dischi, causa bad block,
+      `fstab` risultante) — vedi sezione sopra, non ancora fatto da
+      nessuna sessione con accesso diretto.
 - [x] Riconciliare il branch — vedi sezione sopra.
 - [x] Portare nel repo i tre fix (Problema 2, 3, 4) — applicati su
       `claude/postinstall-firstboot-fixes` e verificati end-to-end sul
