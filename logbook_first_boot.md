@@ -503,21 +503,31 @@ combinazione driver/versione all'altra — lo stesso tipo di problema si
 è già manifestato due volte con pacchetti diversi, non vale la pena
 inseguire un elenco di nomi noti.
 
-**Non ancora verificato**: il fix sopra è stato scritto per analisi del
-log di questo collaudo, non eseguito su un boot reale (l'ISO di questo
-nodo ha già a bordo la versione precedente dello script). Il nodo è
-stato sbloccato **bypassando** il problema invece di esercitare il fix:
-scritto a mano il marker di riavvio
+**Il fix nel repo resta non verificato con un boot reale da zero**: è
+stato scritto per analisi del log di questo collaudo, non eseguito
+sull'ISO di questo nodo (che ha già a bordo la versione precedente
+dello script). Il nodo è stato sbloccato **bypassando** il problema
+invece di esercitare il fix: scritto a mano il marker di riavvio
 (`/opt/kickstart-berlin/.phase4-nvidia-reboot-attempted`) e fatto
 riavviare — l'hold è solo una precauzione anti-mismatch NVML (driver
 già installato comunque), non necessaria perché `nvidia-smi` funzioni.
-Dopo quel riavvio `nvidia-smi` dovrebbe funzionare e il setup
-proseguire da solo (Fase 4 salta il blocco di installazione una volta
-che `nvidia-smi` risponde) — esito da confermare. Nessun test CI
-automatico esercita questo percorso: `scripts/boot-test-qemu.sh` non ha
-una GPU, quindi Fase 4 viene saltata pulitamente
-(`_phase4_gpu_present` restituisce falso) — verificabile solo su
-hardware reale con una GPU NVIDIA presente.
+Nessun test CI automatico esercita questo percorso:
+`scripts/boot-test-qemu.sh` non ha una GPU, quindi Fase 4 viene saltata
+pulitamente (`_phase4_gpu_present` restituisce falso) — verificabile
+solo su hardware reale con una GPU NVIDIA presente, e solo al prossimo
+boot da un'ISO che includa effettivamente il fix.
+
+**Bypass confermato riuscito** (stesso giorno, dopo il riavvio
+manuale): `nvidia-smi` funzionante — `NVIDIA GeForce RTX 5060 Ti`,
+driver `595.99.02`, CUDA 13.2, 16311MiB VRAM (coerente con la 5060 Ti,
+16GB) — Fase 4 ha quindi saltato pulitamente il blocco di
+installazione al boot successivo, come previsto. Il setup è proseguito
+da solo oltre Fase 4 senza bisogno di altro intervento manuale:
+osservato `kickstart-berlin-postinstall.service` in stato `activating
+(start)` dentro `phase5_docker()` (installazione Docker via
+`get-docker.sh`, poi `docker version`) — esito finale (fasi 5/6/8/10,
+`.setup-complete`) ancora da confermare, il servizio era ancora in
+esecuzione al momento di questa annotazione.
 
 ## Prossimi passi
 
