@@ -169,15 +169,27 @@ phase4_nvidia_driver() {
     # anche voci non installate che dpkg conosce solo come riferimento
     # (Status "ok not-installed" — nessun candidato apt associato, es.
     # "nvidia-smi", "nvidia-persistenced" su driver in variante "-open").
-    # "apt-mark hold" fallisce su quelle ("Can't select installed nor
-    # candidate version") e con "set -euo pipefail" (riga 15) manda in
-    # errore l'intero script PRIMA del reboot sotto — scoperto sul primo
-    # collaudo reale su hardware con moduli Optane PMem (RTX 3090, driver
-    # 595-open), vedi logbook_first_boot.md.
+    # Scoperto sul primo collaudo reale su hardware con moduli Optane
+    # PMem (RTX 3090, driver 595-open), vedi logbook_first_boot.md.
+    #
+    # Il filtro da solo non basta: sul collaudo RTX 5060 Ti/Blackwell
+    # (Z620, driver 595-open, 2026-11-21) dpkg ha riportato "ii" anche
+    # per pacchetti transitori/alias senza alcun candidato apt (stessi
+    # nomi del problema originale, "nvidia-smi"/"nvidia-persistenced"
+    # compresi, più altri come "nvidia-utils"/"nvidia-kernel-common"
+    # non suffissati) — non distinguibili in anticipo dallo stato dpkg,
+    # solo da "apt-mark hold" stesso. "apt-mark hold a b c" con "set
+    # -euo pipefail" (riga 15) abortisce l'intero script al primo nome
+    # senza candidato, anche se i pacchetti precedenti dell'elenco sono
+    # stati messi in hold con successo — PRIMA del reboot sotto, lasciando
+    # il driver installato ma il modulo kernel mai caricato. Hold pacchetto
+    # per pacchetto, tollerando il fallimento singolo: più lento ma non
+    # fa dipendere l'esito dell'intera fase dal nome esatto di pacchetti
+    # transitori che cambiano da una versione driver all'altra.
     mapfile -t nvidia_pkgs < <(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 'nvidia-*' 2>/dev/null | awk '$1=="ii"||$1=="hi"{print $2}')
-    if [[ ${#nvidia_pkgs[@]} -gt 0 ]]; then
-      apt-mark hold "${nvidia_pkgs[@]}"
-    fi
+    for nvidia_pkg in "${nvidia_pkgs[@]}"; do
+      apt-mark hold "$nvidia_pkg" || log "Hold saltato per '${nvidia_pkg}': nessun candidato apt (pacchetto transitorio/alias) — non blocca il setup."
+    done
 
     # Il modulo kernel del driver appena installato (DKMS) non e' ancora
     # caricato nel kernel in esecuzione: serve un riavvio prima che
