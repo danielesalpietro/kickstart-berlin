@@ -452,10 +452,10 @@ esatta dei blocchi con errori (output SMART/`dmesg`), contenuto
 risultante di `/etc/fstab`, ed eventuale impatto su Datastore/config
 Docker se il disco coinvolto è mai stato referenziato lì.
 
-## 2026-11-21 — Secondo nodo fisico (HP Z620, `berlin-g8pq`): Problema 5, Fase 4 fallisce su RTX 5060 Ti/Blackwell (stesso bug di Problema 2, pacchetti diversi)
+## 2026-11-21 — Secondo nodo fisico (HP Z620, `berlin-g8pq`): ISO costruita da un commit di agosto, non un bug nuovo
 
-Primo boot reale della **stessa ISO/build di "berlin"** su un secondo
-nodo fisico: HP Z620 (piattaforma più vecchia della Z8 G4, Sandy/Ivy
+Primo boot reale della **stessa build di "berlin"** su un secondo nodo
+fisico: HP Z620 (piattaforma più vecchia della Z8 G4, Sandy/Ivy
 Bridge-EP), GPU **RTX 5060 Ti** (Blackwell, non Ampere come la 3090),
 ConnectX-3 e X540-T2. Hostname generato `berlin-g8pq` — confermato che
 il meccanismo multi-nodo (suffisso casuale a install-time, non
@@ -466,74 +466,86 @@ punto (vedi `logbook-fase2.md`) — non essendo successo, la UEFI è
 andata bene, nessun intervento necessario su questo fronte.
 
 `kickstart-berlin-postinstall.service` è fallito (`exit 100`) durante
-Fase 4, **stesso punto esatto** del Problema 2 (2026-08-23): `apt-mark
-hold` sui pacchetti `nvidia-*` installati, prima del riavvio
-necessario a caricare il modulo kernel. `lspci -nnk` confermava la GPU
-vista correttamente (`[10de:2d04]`, moduli disponibili `nvidia_drm`/
-`nvidia`), e `ubuntu-drivers autoinstall` aveva installato il driver
-branch **595** (lo stesso già confermato sulla RTX 3090) — quindi
-**non** un problema di driver troppo vecchio per Blackwell, come si
-sarebbe potuto temere.
+Fase 4: `apt-mark hold` sui pacchetti `nvidia-*` installati, prima del
+riavvio necessario a caricare il modulo kernel. `lspci -nnk`
+confermava la GPU vista correttamente (`[10de:2d04]`, moduli
+disponibili `nvidia_drm`/`nvidia`), e `ubuntu-drivers autoinstall`
+aveva installato il driver branch **595** (lo stesso già confermato
+sulla RTX 3090) — quindi **non** un problema di driver troppo vecchio
+per Blackwell, come si sarebbe potuto temere.
 
-**Causa**: il filtro `${db:Status-Abbrev}` = `ii`/`hi` introdotto dal
-fix del Problema 2 (per escludere pacchetti "noti a dpkg" ma senza
-candidato apt) non basta — su questo nodo dpkg riportava **`ii`**
-(installato, non solo "conosciuto") per una serie di pacchetti
-transitori/alias senza candidato apt: `nvidia-smi`, `nvidia-persistenced`,
-`nvidia-utils`, `nvidia-opencl-icd`, `nvidia-kernel-common`,
-`nvidia-kernel-source`, `nvidia-compute-utils`, `nvidia-driver-binary`,
-`nvidia-egl-wayland-common`, `nvidia-settings-binary`,
-`nvidia-libopencl1-dev`, `nvidia-prebuilt-kernel`, e due varianti con
-suffisso `-595-server-595.99.02`/`-595-595.99.02`. Gli stessi due nomi
-già citati come esempio nel commento del fix originale
-(`nvidia-smi`, `nvidia-persistenced`) sono rispuntati, stavolta con
-status dpkg diverso da quello per cui il filtro era stato scritto —
-non prevedibile dallo stato dpkg da solo. `apt-mark hold a b c ...`
-abortisce l'intero comando (quindi, con `set -euo pipefail`, l'intero
-script) al primo nome senza candidato, anche se altri nomi della stessa
-chiamata erano già stati messi in hold con successo.
+**Prima diagnosi scritta qui, poi corretta**: inizialmente registrato
+come un bug *nuovo* ("Problema 5"), distinto dal Problema 2
+(2026-08-23) — ragionamento fatto leggendo il codice *attuale* di
+questo repo (che ha già il fix del Problema 2, filtro
+`${db:Status-Abbrev}` = `ii`/`hi`) e supponendo che fosse quello
+effettivamente in esecuzione sul nodo. **Supposizione sbagliata**, non
+verificata prima di scriverla — esattamente il tipo di errore che la
+direttiva 4 di `CLAUDE.md` chiede di evitare.
 
-**Fix applicato nel repo** (non ancora verificato con un boot reale da
-zero — vedi sotto): `apt-mark hold` ora gira pacchetto per pacchetto in
-un loop, con fallimento singolo tollerato (`|| log ...`) invece che
-nell'unica chiamata con l'intero array. Più lento (una invocazione
-`apt-mark` per pacchetto invece di una sola), ma l'esito della fase non
-dipende più dal nome esatto di pacchetti transitori che cambiano da una
-combinazione driver/versione all'altra — lo stesso tipo di problema si
-è già manifestato due volte con pacchetti diversi, non vale la pena
-inseguire un elenco di nomi noti.
+**Causa reale**, confermata leggendo il file *davvero* presente sul
+nodo (`sha1sum`/`wc -l`/`grep` via SSH) e confrontandolo con la storia
+git (stesso metodo usato per la Z8 in agosto, "Riconciliazione
+branch" sopra): **l'ISO di questa Z620 è stata costruita dal commit
+`f6d31a5` (2026-08-20)**, *prima* del merge dei fix Problema 2/3/4
+(PR #28, 23-24/08). A quel commit, `phase4_nvidia_driver()` ha
+`dpkg-query -W -f='${Package}\n' 'nvidia-*'` **senza alcun filtro di
+stato** — il Problema 2 originale, identico, non una variante nuova.
+Stessa causa esatta per il fallimento successivo di Fase 10
+(`bash: line 40: HOME: unbound variable` nell'installer vast.ai): il
+fix `HOME="${HOME:-/root}" bash` (Problema 3) è arrivato nello stesso
+commit `fec716e` di poco successivo a `f6d31a5`, quindi assente anche
+lui su questa ISO. **Nessuno dei due è un bug da correggere nel
+repo**: `develop` li ha già risolti da agosto, l'ISO di questo nodo
+specifico è semplicemente troppo vecchia.
 
-**Il fix nel repo resta non verificato con un boot reale da zero**: è
-stato scritto per analisi del log di questo collaudo, non eseguito
-sull'ISO di questo nodo (che ha già a bordo la versione precedente
-dello script). Il nodo è stato sbloccato **bypassando** il problema
-invece di esercitare il fix: scritto a mano il marker di riavvio
-(`/opt/kickstart-berlin/.phase4-nvidia-reboot-attempted`) e fatto
-riavviare — l'hold è solo una precauzione anti-mismatch NVML (driver
-già installato comunque), non necessaria perché `nvidia-smi` funzioni.
-Nessun test CI automatico esercita questo percorso:
-`scripts/boot-test-qemu.sh` non ha una GPU, quindi Fase 4 viene saltata
-pulitamente (`_phase4_gpu_present` restituisce falso) — verificabile
-solo su hardware reale con una GPU NVIDIA presente, e solo al prossimo
-boot da un'ISO che includa effettivamente il fix.
+**Il fix "pacchetto per pacchetto" committato oggi in `postinstall/
+setup.sh`** (per tollerare singoli fallimenti di `apt-mark hold`)
+resta nel repo — è una miglioria di robustezza valida a prescindere
+(un nome di pacchetto transitorio imprevisto potrebbe sempre spuntare
+su una combinazione driver/hardware futura) — ma va letto come tale,
+**non** come la correzione di un bug mai esistito in questa forma su
+`develop`. Resta comunque non verificato con un boot reale da zero: né
+questo collaudo né nessun altro finora lo ha effettivamente eseguito.
 
-**Bypass confermato riuscito** (stesso giorno, dopo il riavvio
-manuale): `nvidia-smi` funzionante — `NVIDIA GeForce RTX 5060 Ti`,
-driver `595.99.02`, CUDA 13.2, 16311MiB VRAM (coerente con la 5060 Ti,
-16GB) — Fase 4 ha quindi saltato pulitamente il blocco di
-installazione al boot successivo, come previsto. Il setup è proseguito
-da solo oltre Fase 4 senza bisogno di altro intervento manuale:
-osservato `kickstart-berlin-postinstall.service` in stato `activating
-(start)` dentro `phase5_docker()` (installazione Docker via
-`get-docker.sh`, poi `docker version`) — esito finale (fasi 5/6/8/10,
-`.setup-complete`) ancora da confermare, il servizio era ancora in
-esecuzione al momento di questa annotazione.
+**Nodo sbloccato** con interventi manuali diretti via SSH (non
+esercitando né il fix di agosto né quello di oggi, già presenti in
+`develop` ma non su questa ISO):
+- Fase 4: scritto a mano il marker di riavvio
+  (`/opt/kickstart-berlin/.phase4-nvidia-reboot-attempted`) e riavviato
+  — l'hold è solo una precauzione anti-mismatch NVML, non necessaria
+  perché `nvidia-smi` funzioni. **Confermato dopo il riavvio**:
+  `nvidia-smi` funzionante — `NVIDIA GeForce RTX 5060 Ti`, driver
+  `595.99.02`, CUDA 13.2, 16311MiB VRAM (coerente con la 5060 Ti,
+  16GB). Fase 4 ha saltato pulitamente il blocco di installazione al
+  boot successivo, come previsto.
+- Fase 10: non ancora risolta al momento di questa annotazione — serve
+  rieseguire a mano `curl -fsSL https://vast.ai/install.sh | HOME="${HOME:-/root}" bash`
+  (la riga corretta, non quella sull'ISO) perché il servizio prosegua
+  da solo.
+
+**Implicazione più ampia, da decidere con l'utente**: questa ISO
+manca di *tutto* quello scoperto dopo il 20/08 su hardware reale — non
+solo Problema 2/3/4, ma anche il fix containerd/Datastore (issue #41),
+molto probabilmente anche `admin` nel gruppo `docker` (issue #34,
+stesso tipo di gap temporale) — non ancora verificato se presente o
+no. Continuare a correggere pezzo per pezzo via SSH ogni gap scoperto
+è l'approccio seguito finora in questa sessione, ma **non è ovvio sia
+la scelta giusta oltre un certo punto**: ricostruire un'ISO fresca da
+`develop` aggiornato (o da questo branch) e reinstallare da zero
+evita di scoprire i gap uno alla volta nei prossimi giorni — scelta
+lasciata all'utente, non presa qui.
 
 ## Prossimi passi
 
-- [ ] Confermare l'esito del riavvio sulla Z620 (`berlin-g8pq`):
-      `nvidia-smi` funzionante e `kickstart-berlin-postinstall.service`
-      arrivato a `.setup-complete` — vedi Problema 5 sopra.
+- [ ] Decidere con l'utente: continuare a correggere questa Z620 gap
+      per gap (prossimo noto: Fase 10/`HOME`, poi verificare #34/#41),
+      oppure reinstallare da un'ISO fresca costruita da `develop`
+      aggiornato — vedi sezione sopra.
+- [ ] Se si continua sul nodo attuale: rieseguire a mano l'installer
+      vastai con `HOME` corretto ed confermare che
+      `kickstart-berlin-postinstall.service` arrivi a
+      `.setup-complete` (fasi 5/6/8/10).
 - [ ] Verificare sul nodo reale il dettaglio tecnico dell'intervento
       `sda`→`sdc` del 2026-09-10 (identità dischi, causa bad block,
       `fstab` risultante) — vedi sezione sopra, non ancora fatto da
