@@ -519,10 +519,27 @@ esercitando né il fix di agosto né quello di oggi, già presenti in
   `595.99.02`, CUDA 13.2, 16311MiB VRAM (coerente con la 5060 Ti,
   16GB). Fase 4 ha saltato pulitamente il blocco di installazione al
   boot successivo, come previsto.
-- Fase 10: non ancora risolta al momento di questa annotazione — serve
-  rieseguire a mano `curl -fsSL https://vast.ai/install.sh | HOME="${HOME:-/root}" bash`
-  (la riga corretta, non quella sull'ISO) perché il servizio prosegua
-  da solo.
+- Fase 10: più delicato del previsto — il primo tentativo
+  (`curl -fsSL https://vast.ai/install.sh | HOME="${HOME:-/root}" bash`
+  senza `sudo`) ha installato `vastai` sotto `/home/admin/...` perché
+  interattivamente `$HOME` è già `/home/admin` (il nostro `${HOME:-/root}`
+  è un no-op quando `$HOME` è già definita e non vuota) — invisibile al
+  servizio, che gira come root con `$HOME` davvero assente, quindi il
+  riavvio del servizio ha ripetuto lo stesso errore. Risolto installando
+  esplicitamente come root (`sudo -H bash -c '...'`, `-H` forza
+  `HOME=/root`) **e** collegando a mano il binario in
+  `/usr/local/bin/vastai` (`ln -sf $(find /root/.local/share/vastai
+  ...) /usr/local/bin/vastai`) — necessario perché `/root/.local/bin`
+  non è sul PATH del servizio non interattivo, quindi senza quel
+  symlink `command -v vastai` sarebbe rimasto falso per root e il
+  servizio avrebbe ritentato (e fallito di nuovo) la stessa riga rotta
+  dell'ISO, a prescindere da cosa fosse già installato sotto `/root`.
+  **Confermato risolto**: `kickstart-berlin-postinstall.service` è
+  `active (exited)`, `status=0/SUCCESS` su `ExecStart` ed
+  `ExecStartPost`, `.setup-complete` scritto — Fase 10 completata
+  (`CLI vastai già installata (1.11.2)`), nessuna fase rimanente dopo
+  in questa versione dello script. Nodo pienamente operativo sui fix
+  noti, applicati a mano come già successo sulla Z8 in agosto.
 
 **Implicazione più ampia, da decidere con l'utente**: questa ISO
 manca di *tutto* quello scoperto dopo il 20/08 su hardware reale — non
@@ -536,12 +553,21 @@ la scelta giusta oltre un certo punto**: ricostruire un'ISO fresca da
 evita di scoprire i gap uno alla volta nei prossimi giorni — scelta
 lasciata all'utente, non presa qui.
 
+**Deciso con l'utente (stesso giorno)**: sblocco rapido (fatto, sopra)
+poi rigenerazione della Z620 da un'ISO fresca — non si continua a
+correggere questo nodo gap per gap oltre lo sblocco minimo. Resta da
+decidere solo da quale ref costruire l'ISO (`develop` dopo un merge di
+questo branch, o direttamente da `claude/z8-g4-access-9srffl`).
+
 ## Prossimi passi
 
-- [ ] Decidere con l'utente: continuare a correggere questa Z620 gap
-      per gap (prossimo noto: Fase 10/`HOME`, poi verificare #34/#41),
-      oppure reinstallare da un'ISO fresca costruita da `develop`
-      aggiornato — vedi sezione sopra.
+- [ ] Costruire l'ISO fresca per il reinstall della Z620 (workflow
+      `Build ISO (on-demand)`, tab Actions) — scegliere se da `develop`
+      (dopo merge di questo branch) o direttamente da
+      `claude/z8-g4-access-9srffl`, poi riverificare su questo hardware
+      (Z620 + RTX 5060 Ti + ConnectX-3/X540-T2) che i fix già noti
+      (Problema 2/3/4, containerd #41, gruppo docker #34) funzionino
+      senza intervento manuale questa volta.
 - [ ] Se si continua sul nodo attuale: rieseguire a mano l'installer
       vastai con `HOME` corretto ed confermare che
       `kickstart-berlin-postinstall.service` arrivi a
